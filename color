@@ -1,0 +1,54 @@
+#!/usr/bin/env python
+# vim:noexpandtab:
+
+import re, subprocess, sys
+from itertools import izip, islice
+
+def shellquotes(*args):
+	return subprocess.Popen([repr(a) if type(a) != str else a for a in args], stdout=subprocess.PIPE).communicate()[0]
+
+colors = {"": ""}
+color_number_mapping = [(0, "black"), (1, "red"), (2, "green"), (3, "yellow"), (4, "blue"), (5, "magenta"), (6, "cyan"), (7, "white")]
+for num, name in color_number_mapping:
+	colors[name] = shellquotes("tput", "setaf", num)
+for num, name in color_number_mapping:
+	colors["bg"+name] = shellquotes("tput", "setab", num)
+colors["bold"] = shellquotes("tput", "bold")
+colors["reset"] = shellquotes("tput", "sgr0")
+
+class NotAColor(Exception):
+	pass
+
+def color(c):
+	if c not in colors:
+		return ""
+	return colors[c]
+
+if len(sys.argv) < 3:
+	print >>sys.stderr, "Need at least two arguments: regex color[,bgcolor]"
+	sys.exit(1)
+
+if (len(sys.argv)-1) % 2 != 0:
+	print >>sys.stderr, "Arguments should be paired: regex color[,bgcolor]"
+	sys.exit(1)
+
+for attr in islice(sys.argv, 2, None, 2):
+	for c in attr.split(","):
+		if c not in colors:
+			if c.startswith("bg"):
+				colors[c] = shellquotes("tput", "setab", c[2:])
+			else:
+				colors[c] = shellquotes("tput", "setaf", c)
+
+rules = []
+for p, c in izip(islice(sys.argv, 1, None, 2), islice(sys.argv, 2, None, 2)):
+	c = "".join([color(x) for x in c.split(",")])
+	p = re.compile(p)
+	rules.append((p, c))
+
+for line in sys.stdin.readlines():
+	for p, c in rules:
+		def repl(m):
+			return c + m.group(0) + color("reset")
+		line = re.sub(p, repl, line)
+	sys.stdout.write(line)

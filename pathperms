@@ -1,0 +1,18 @@
+#!/usr/bin/env python
+
+import optparse, os, subprocess
+
+parser = optparse.OptionParser()
+opts, args = parser.parse_args()
+
+if len(args) != 1:
+	parser.error("Sorry, only one arg for now")
+
+path = args[0]
+pathPart = os.path.sep
+paths = []
+for c in path.split(os.path.sep):
+	pathPart = os.path.join(pathPart, c)
+	paths.append(pathPart)
+
+subprocess.call(["ls", "-dl", "--color=auto"] + paths)

@@ -1,0 +1,51 @@
+#!/linopt/python/python-2.7.3/rh6-32/bin/python2.7
+
+import os, sys, argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("var", 
+	nargs=1,
+	default="PATH",
+	metavar="VAR",
+	help="environment variable"
+)
+parser.add_argument("paths",
+	nargs="*",
+	metavar="PATH",
+)
+parser.add_argument("--remove", "-r", 
+	dest="remove", 
+	action="store_true", 
+	default=False,
+	help="remove all the specified paths"
+)
+parser.add_argument("--exclude", "-x",
+	dest="exclude",
+	action="append",
+	default=[],
+	metavar="PATH",
+	help="remove the specified path from the var"
+)
+parser.add_argument("--show", "-s",
+	dest="show",
+	action="store_true",
+	default=False
+)
+
+opts = parser.parse_args()
+opts.var = opts.var[0]
+opts.paths = map(os.path.normpath, opts.paths)
+opts.exclude = set(map(os.path.normpath, opts.exclude))
+if opts.remove:
+	opts.exclude.update(opts.paths)
+pathsold = map(os.path.normpath, os.environ.get(opts.var, "").split(os.pathsep))
+
+pathsall = filter(lambda p: p not in opts.exclude, map(os.path.normpath, opts.paths + pathsold))
+
+alld = dict([(p, True) for p in pathsall if p not in opts.exclude])
+pathsall = filter(lambda x: alld.pop(x, False), pathsall)
+
+if opts.paths and not opts.show:
+	print os.pathsep.join(pathsall)
+else:
+	print "\n".join(pathsall)

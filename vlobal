@@ -1,0 +1,48 @@
+#!/usr/bin/env python2.7
+
+import sys, re, subprocess
+
+pattern = None
+args = sys.argv[1:]
+if "-f" not in args:
+	args = filter(lambda x: not x.startswith("-"), args)
+	pattern = args[0] if len(args) else None
+
+
+attrs = ("\033[41m", "\033[m") # ANSI red background
+attrs = ("\033[31m", "\033[m") # ANSI red foreground
+
+attrs = ("\033[38;5;161m", "\033[m") # Dark pink (, 0xA1)
+attrs = ("\033[48;5;25m\033[38;5;194m", "\033[m") # Light green on light blue backround (0x19, 0xC2)
+attrs = ("\033[48;5;214m\033[30m", "\033[m") # Black on dark yellow background (0xD6, 0x00)
+attrs = ("\033[48;5;238m\033[38;5;214m", "\033[m") # Dark yellow on gray background (0xEE, 0xD6)
+
+
+def decorator(s):
+	return attrs[0] + s.group(0) + attrs[1]
+
+def decorate():
+	pass
+
+glp = subprocess.Popen(["global", "-x"] + sys.argv[1:], stdout=subprocess.PIPE)
+
+
+pager = None
+color = False
+output = sys.stdout
+if sys.stdout.isatty():
+	pager = subprocess.Popen(["less", "-FXRS"], stdin=subprocess.PIPE)
+	output = pager.stdin
+	color = True
+
+
+for name, line, path, match in map(lambda x: re.split(r"\s+", x.rstrip("\n"), 3), glp.stdout.readlines()):
+	if color:
+		match = re.sub(pattern, decorator, match)
+	line = name.ljust(20) + " " + ("+" + line).ljust(8) + path.ljust(40) + " " + match + "\n"
+	output.write(line)
+
+glp.wait()
+if pager:
+	pager.stdin.close()
+	pager.wait()

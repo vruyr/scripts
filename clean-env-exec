@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+exec env -i \
+	"HOME=$HOME" \
+	"PATH=/usr/local/bin:/bin:/usr/bin" \
+	"SHELL=$SHELL" \
+	"TERM=$TERM" \
+	"MAIL=$MAIL" \
+	"LOGNAME=$LOGNAME" \
+	"SSH_CLIENT=$SSH_CLIENT" \
+	"SSH_CONNECTION=$SSH_CONNECTION" \
+	"$@"
