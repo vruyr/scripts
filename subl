@@ -1,0 +1,24 @@
+#!/bin/bash
+
+function subl()
+{
+	local relpath="Contents/SharedSupport/bin/subl"
+	local oldIFS=$IFS
+	IFS=$'\n\r'
+	#local apps=( $(mdfind 'kMDItemKind == "Application" && kMDItemCFBundleIdentifier == "com.sublimetext.3"') )
+	local apps=( $(mdfind 'kMDItemKind == "Application" && kMDItemDisplayName == "Sublime Text"') )
+
+	IFS=$oldIFS
+	test ${#apps[@]} == 0 && {
+		echo "Can't find Sublime Text app" >&2
+		return 1
+	}
+	test ${#apps[@]} != 1 && {
+		echo "It seems that you have more than one Sublime Text app, and that confuses the hell out of me." >&2
+		return 2
+	}
+	python -c 'import sys; print sys.argv[1:];' "${apps[0]}/${relpath}" "$@"
+	"${apps[0]}/${relpath}" "$@"
+}
+
+subl "$@"

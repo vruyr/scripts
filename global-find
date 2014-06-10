@@ -1,0 +1,11 @@
+#!/bin/sh
+
+excludes="
+/dev
+/proc
+"
+
+findExcludes=$(echo "$excludes" | grep -v '^\s*$' | sed 's/\/*$//; s/^.*$/-path & -o/; $ { s/ -o//; }')
+
+echo 'find / \( '$findExcludes' \)  -prune -false -o '"$@"''
+find / \( $findExcludes \)  -prune -false -o "$@"
