@@ -1,4 +1,4 @@
-#!/linopt/python/python-2.7.3/rh6-32/bin/python2.7
+#!/usr/bin/env python2.7
 # vim:noexpandtab:
 
 VERSION="0.1.0"
