@@ -1,0 +1,30 @@
+#!/bin/bash
+
+test "${#@}" -eq 0 && {
+	echo "Need folders to delete as arguments."
+	exit 1
+}
+
+set -o errexit
+
+for d in "$@";
+do
+	d=$(cd "$d" && pwd)
+
+	test -d "$d" || {
+		echo "Error: '$d' is not a folder."
+		continue
+	}
+
+	test $(find 1 -not -type d -not -type f | wc -l) -ne 0 && {
+		echo "Error: I can only handle files and folder. It seems '$d' contains something else."
+		continue
+	}
+
+	# clear the garbage
+	find "$d" -type f -name '.DS_Store' -delete -print
+
+	# recursive folder deletion
+	find "$d" -type d -mindepth 1 -empty -delete -print
+	rmdir "$d"; echo "$d"
+done
