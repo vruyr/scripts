@@ -15,4 +15,4 @@ for c in path.split(os.path.sep):
 	pathPart = os.path.join(pathPart, c)
 	paths.append(pathPart)
 
-subprocess.call(["ls", "-dl", "--color=auto"] + paths)
+subprocess.call(["ls", "-dl"] + paths) #, "--color=auto"
