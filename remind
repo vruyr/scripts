@@ -1,0 +1,34 @@
+#!/bin/bash
+
+self_name=$(basename "$0")
+self_dir=$(cd "$(dirname "$0")" && pwd)
+
+if [ "$1" != "--background" ];
+then
+	echo "Will remind in $1 seconds: $2"
+	nohup >/dev/null 2>&1 "$0" --background "$@" &
+	exit
+fi
+
+shift # shifting the --background parameter
+
+function main()
+{
+	sleep_time=$1
+	message=$2
+	sleep "$1"
+	display_notification "$message"
+}
+
+function display_notification()
+{
+	local esqmsg
+	printf -v esqmsg "%q" "$1"
+	esqmsg="${esqmsg//\\ / }"
+
+	osascript - <<-EOT
+		display notification "${esqmsg}" with title "$self_name"
+	EOT
+}
+
+main "$@"
