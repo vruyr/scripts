@@ -1,6 +1,6 @@
 #!/bin/bash
 
-function subl()
+function exec_subl()
 {
 	local relpath="Contents/SharedSupport/bin/subl"
 	local oldIFS=$IFS
@@ -18,7 +18,7 @@ function subl()
 		return 2
 	}
 	python -c 'import sys; print sys.argv[1:];' "${apps[0]}/${relpath}" "$@"
-	"${apps[0]}/${relpath}" "$@"
+	exec "${apps[0]}/${relpath}" "$@"
 }
 
-subl "$@"
+exec_subl "$@"
