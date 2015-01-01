@@ -3,8 +3,8 @@
 import os, sys, argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("var", 
-	nargs=1,
+parser.add_argument("var",
+	nargs="?",
 	default="PATH",
 	metavar="VAR",
 	help="environment variable"
@@ -13,9 +13,9 @@ parser.add_argument("paths",
 	nargs="*",
 	metavar="PATH",
 )
-parser.add_argument("--remove", "-r", 
-	dest="remove", 
-	action="store_true", 
+parser.add_argument("--remove", "-r",
+	dest="remove",
+	action="store_true",
 	default=False,
 	help="remove all the specified paths"
 )
@@ -33,7 +33,6 @@ parser.add_argument("--show", "-s",
 )
 
 opts = parser.parse_args()
-opts.var = opts.var[0]
 opts.paths = map(os.path.normpath, opts.paths)
 opts.exclude = set(map(os.path.normpath, opts.exclude))
 if opts.remove:
