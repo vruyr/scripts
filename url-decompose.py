@@ -8,7 +8,8 @@ def main(args):
 	urls = args[1:]
 
 	if not urls:
-		print("Paste URLs here one per line. Press Ctrl-D when done to exit.\n")
+		if sys.stdin.isatty():
+			print("Paste URLs here one per line. Press Ctrl-D when done to exit.\n")
 		urls = sys.stdin
 
 	for url in urls:
