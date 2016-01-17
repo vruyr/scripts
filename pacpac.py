@@ -21,7 +21,7 @@ async def main(*, argv=None, loop=None):
 		print(p)
 		while c or []:
 			x = c[:10]
-			print(" " * 4, ", ".join(x))
+			print(" " * 4, " ".join(x))
 			c = c[10:]
 
 
