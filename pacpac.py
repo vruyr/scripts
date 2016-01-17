@@ -5,10 +5,10 @@ assert sys.version_info[:2] == (3, 5), "Python 3.5 only!"
 
 async def main(*, argv=None, loop=None):
 	opts = _parse_args(argv=argv)
-	xx = (await pacman("-Qg")).decode().splitlines()
+	xx = (await pacman(opts.host, "-Qg")).decode().splitlines()
 	# groups repeat - dict is not a good collection for this
 	groups = dict(tuple(reversed(x.split(maxsplit=2))) for x in xx)
-	packages = set((await pacman("-Qqtte")).decode().splitlines())
+	packages = set((await pacman(opts.host, "-Qqtte")).decode().splitlines())
 	result = {}
 	while packages:
 		p = packages.pop()
@@ -26,9 +26,10 @@ async def main(*, argv=None, loop=None):
 
 
 
-async def pacman(*argv):
+async def pacman(host, *argv):
+	remote = ["ssh", host] if host is not None else []
 	p = await asyncio.create_subprocess_exec(
-		"pacman", *argv,
+		*remote, "pacman", *argv,
 		stdout=subprocess.PIPE
 	)
 	stdout, _ = await p.communicate()
@@ -41,7 +42,7 @@ def _parse_args(argv=None):
 		description=None,
 		epilog=None
 	)
-	parser.add_argument("--xxx", dest="xxx", action="store", metavar="VALUE", type=int, help="")
+	parser.add_argument("host", nargs="?", metavar="SSH_HOST", type=str, default=None, help="")
 	opts = parser.parse_args((argv[1:] if argv is not None else None))
 	return opts
 
