@@ -1,0 +1,40 @@
+set -o errexit
+
+dest_root=~/Downloads
+source_dir=$(pwd)
+project_name=$(basename "$source_dir")
+version_str=$(git describe --always --dirty)
+
+dest_dir="$dest_root/sphinx-docs/$project_name"
+mkdir -p "$dest_dir"
+
+
+sphinx_opts=(
+	-C
+	-D project="$project_name"
+	-D copyright="$(date +%Y), $(id -F)"
+	-D version="$version_str"
+	-D release="$version_str"
+	-D master_doc=index
+	-D source_suffix=.rst
+	-D extensions=sphinx.ext.todo,sphinx.ext.intersphinx
+	-D html_theme=sphinx_rtd_theme
+	-D pygments_style=sphinx
+	-D todo_include_todos=1
+)
+
+sphinx-build "${sphinx_opts[@]}" -b html -d "$dest_dir/doctrees" "$@" "$source_dir" "$dest_dir/html/"
+
+url=$(python3 - "$dest_dir/html/index.html" <<-EOT
+	import sys, urllib.request, urllib.parse
+
+	path = urllib.request.pathname2url(sys.argv[1])
+	url = urllib.parse.urlunparse(("file", "", path, None, None, None))
+	print(url)
+EOT)
+
+echo
+echo "Documentaion is available at:"
+echo
+echo $'\t'"$url"
+echo
