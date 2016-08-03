@@ -3,6 +3,9 @@ set -o errexit
 dest_root=~/Downloads
 source_dir=$(pwd)
 project_name=$(basename "$source_dir")
+if [ "$project_name" == "docs" ]; then
+	project_name=$(basename "$(dirname "$source_dir")")
+fi
 version_str=$(git describe --always --dirty)
 
 dest_dir="$dest_root/sphinx-docs/$project_name"
@@ -21,20 +24,108 @@ sphinx_opts=(
 	-D html_theme=sphinx_rtd_theme
 	-D pygments_style=sphinx
 	-D todo_include_todos=1
+	-D todo_link_only=1
 )
 
 sphinx-build "${sphinx_opts[@]}" -b html -d "$dest_dir/doctrees" "$@" "$source_dir" "$dest_dir/html/"
 
-url=$(python3 - "$dest_dir/html/index.html" <<-EOT
-	import sys, urllib.request, urllib.parse
+function toUrl() {
+	python3 - "$1" <<-EOT
+		import sys, urllib.request, urllib.parse
 
-	path = urllib.request.pathname2url(sys.argv[1])
-	url = urllib.parse.urlunparse(("file", "", path, None, None, None))
-	print(url)
-EOT)
+		path = urllib.request.pathname2url(sys.argv[1])
+		url = urllib.parse.urlunparse(("file", "", path, None, None, None))
+		print(url)
+	EOT
+}
 
-echo
-echo "Documentaion is available at:"
-echo
-echo $'\t'"$url"
-echo
+urlPrefix=$(toUrl "$dest_dir/html/")
+url=$(toUrl "$dest_dir/html/index.html")
+
+osascript - "$urlPrefix" "$url" >/dev/null <<-EOT
+	on run argv
+		set theUrlPrefix to "file:///Users/vruyr/Downloads/sphinx-docs/ahjoc/"
+		set theUrlPrefix to item 1 of argv
+		set theUrl to item 2 of argv
+
+		set theWindow to missing value
+		set theTab to missing value
+
+		tell application "/Applications/Safari.app"
+			repeat with w in windows
+				tell w
+					try
+						set theTab to (first tab whose URL starts with theUrlPrefix)
+						set theWindow to w
+					on error e
+					end try
+				end tell
+			end repeat
+
+			activate
+			if theTab is missing value then
+				tell window 1
+					set current tab to make new tab with properties {URL:theUrl}
+				end tell
+			else
+				tell theWindow
+					set current tab to theTab
+					tell theTab to do JavaScript "window.location.reload()"
+				end tell
+			end if
+		end tell
+	end run
+EOT
+
+
+# echo
+# echo "Documentaion is available at:"
+# echo
+# echo $'\t'"$url"
+# echo
+
+
+
+# sphinx-build -v \
+# 	-b html \
+# 	-C \
+# 	-D project=PROJECT_NAME_GOES_HERE \
+# 	-D copyright='COPYRIGHT_NOTICE' \
+# 	-D version=0.1 \
+# 	-D release=0.1 \
+# 	-D master_doc=index \
+# 	-D source_suffix=.rst \
+# 	-D extensions=sphinx.ext.todo,sphinx.ext.intersphinx \
+# 	-D html_theme=sphinx_rtd_theme \
+# 	-D pygments_style=sphinx \
+# 	-D todo_include_todos=1 \
+# 	-d x.doctrees \
+# 	x x.html
+#
+#
+# --sep               if specified, separate source and build dirs
+# --dot=DOT           replacement for dot in _templates etc.
+#
+# --epub
+#
+# --sep
+#
+# --no-batchfile --no-makefile
+# --project=PROJECT_NAME_GOES_HERE
+# --author=AUTHOR_NAME_GOES_HERE
+# -v VERSION_GOES_HERE
+# --release=VERSION_GOES_HERE
+# --language=LANGUAGE_GOES_HERE
+# --suffix=.rst
+# --master=index
+# --ext-intersphinx
+# --ext-todo
+# --ext-viewcode
+#
+# --ext-autodoc
+# --ext-doctest
+# --ext-coverage
+# --ext-imgmath
+# --ext-mathjax
+# --ext-ifconfig
+# --ext-githubpages
