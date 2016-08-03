@@ -64,9 +64,13 @@ osascript - "$urlPrefix" "$url" >/dev/null <<-EOT
 
 			activate
 			if theTab is missing value then
-				tell window 1
-					set current tab to make new tab with properties {URL:theUrl}
-				end tell
+				if (count windows) is equal to 0 then
+					make new document with properties {URL:theUrl}
+				else
+					tell window 1
+						set current tab to make new tab with properties {URL:theUrl}
+					end tell
+				end if
 			else
 				tell theWindow
 					set current tab to theTab
