@@ -2,23 +2,24 @@ set -o errexit
 
 dest_root=~/Downloads
 source_dir=$(pwd)
+master_doc=${1:-index.rst}
 project_name=$(basename "$source_dir")
 if [ "$project_name" == "docs" ]; then
 	project_name=$(basename "$(dirname "$source_dir")")
 fi
-version_str=$(git describe --always --dirty)
+version_str=$(git describe --always --dirty 2>/dev/null || echo "unversioned")
 
 dest_dir="$dest_root/sphinx-docs/$project_name"
 mkdir -p "$dest_dir"
 
 
-sphinx_opts=(
+sphinx_build_opts=(
 	-C
 	-D project="$project_name"
 	-D copyright="$(date +%Y), $(id -F)"
 	-D version="$version_str"
 	-D release="$version_str"
-	-D master_doc=index
+	-D master_doc="${master_doc%.rst}"
 	-D source_suffix=.rst
 	-D extensions=sphinx.ext.todo,sphinx.ext.intersphinx
 	-D html_theme=sphinx_rtd_theme
@@ -27,7 +28,7 @@ sphinx_opts=(
 	-D todo_link_only=1
 )
 
-sphinx-build "${sphinx_opts[@]}" -b html -d "$dest_dir/doctrees" "$@" "$source_dir" "$dest_dir/html/"
+sphinx-build "${sphinx_build_opts[@]}" -b html -d "$dest_dir/doctrees" "$source_dir" "$dest_dir/html/"
 
 function toUrl() {
 	python3 - "$1" <<-EOT
@@ -40,7 +41,7 @@ function toUrl() {
 }
 
 urlPrefix=$(toUrl "$dest_dir/html/")
-url=$(toUrl "$dest_dir/html/index.html")
+url=$(toUrl "$dest_dir/html/${master_doc%.rst}.html")
 
 osascript - "$urlPrefix" "$url" >/dev/null <<-EOT
 	on run argv
@@ -87,49 +88,3 @@ EOT
 # echo
 # echo $'\t'"$url"
 # echo
-
-
-
-# sphinx-build -v \
-# 	-b html \
-# 	-C \
-# 	-D project=PROJECT_NAME_GOES_HERE \
-# 	-D copyright='COPYRIGHT_NOTICE' \
-# 	-D version=0.1 \
-# 	-D release=0.1 \
-# 	-D master_doc=index \
-# 	-D source_suffix=.rst \
-# 	-D extensions=sphinx.ext.todo,sphinx.ext.intersphinx \
-# 	-D html_theme=sphinx_rtd_theme \
-# 	-D pygments_style=sphinx \
-# 	-D todo_include_todos=1 \
-# 	-d x.doctrees \
-# 	x x.html
-#
-#
-# --sep               if specified, separate source and build dirs
-# --dot=DOT           replacement for dot in _templates etc.
-#
-# --epub
-#
-# --sep
-#
-# --no-batchfile --no-makefile
-# --project=PROJECT_NAME_GOES_HERE
-# --author=AUTHOR_NAME_GOES_HERE
-# -v VERSION_GOES_HERE
-# --release=VERSION_GOES_HERE
-# --language=LANGUAGE_GOES_HERE
-# --suffix=.rst
-# --master=index
-# --ext-intersphinx
-# --ext-todo
-# --ext-viewcode
-#
-# --ext-autodoc
-# --ext-doctest
-# --ext-coverage
-# --ext-imgmath
-# --ext-mathjax
-# --ext-ifconfig
-# --ext-githubpages
