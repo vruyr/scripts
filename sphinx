@@ -53,6 +53,7 @@ osascript - "$urlPrefix" "$url" >/dev/null <<-EOT
 		set theTab to missing value
 
 		tell application "/Applications/Safari.app"
+			set theTab to missing value
 			repeat with w in windows
 				tell w
 					try
@@ -64,11 +65,12 @@ osascript - "$urlPrefix" "$url" >/dev/null <<-EOT
 			end repeat
 
 			activate
+			set allWindows to windows whose id > 0
 			if theTab is missing value then
-				if (count windows) is equal to 0 then
+				if (count allWindows) is equal to 0 then
 					make new document with properties {URL:theUrl}
 				else
-					tell window 1
+					tell item 1 of allWindows
 						set current tab to make new tab with properties {URL:theUrl}
 					end tell
 				end if
