@@ -1,0 +1,102 @@
+#!/usr/bin/env osascript -l JavaScript
+
+ObjC.import("stdio");
+
+
+function main() {
+	var result = [];
+
+	var app = Application("OmniFocus");
+	var doc = app.defaultDocument();
+	var windows = doc.documentWindows();
+	for(var i = 0; i < app.windows.length; i++) {
+		var w = app.windows[i];
+		if(!w.document())
+			continue;
+		var selectedTrees = w.content().selectedTrees;
+		for(var ii = 0; ii < selectedTrees.length; ii++) {
+			var task = selectedTrees[ii].value();
+			result.push(taskToText(task));
+		}
+	}
+
+	result = result.join("\n\n");
+
+	$.printf("%s", result);
+
+	return; // Returned value will be printed on the console by osascript
+}
+
+
+function taskToText(task) {
+	var dateStr = dateToShortStr(task.creationDate());
+	var taskName = task.name();
+	var maxShortTitleLength = 46;
+	var shortTitle = taskName.length <= maxShortTitleLength ? taskName : `${taskName.slice(0, maxShortTitleLength - 3)}...`;
+	var title = `${dateStr} ${shortTitle}`;
+	var headingString = "-".repeat(title.length);
+	var firstParagraph = "";
+	if(shortTitle != taskName)
+		firstParagraph = taskName;
+	var note = task.note().trim();
+
+	var result = [];
+
+	result.push(title);
+	result.push(headingString);
+
+	result.push("");
+	result.push(`Last modified: ${dateToStr(task.modificationDate())}`);
+
+	if(firstParagraph) {
+		result.push("");
+		result.push(firstParagraph);
+	}
+
+	if(note) {
+		result.push("");
+		result.push(note);
+	}
+
+	return result.join("\n") + "\n";
+}
+
+
+function dateToStr(d) {
+	var month = zpadStrInt(d.getMonth() + 1, 2);
+	var date = zpadStrInt(d.getDate(), 2);
+	var hours = zpadStrInt(d.getHours(), 2);
+	var minutes = zpadStrInt(d.getMinutes(), 2);
+	var seconds = zpadStrInt(d.getSeconds(), 2);
+	return `${d.getFullYear()}-${month}-${date} ${hours}:${minutes}:${seconds} ${tzStr(d)}`;
+}
+
+
+function dateToShortStr(d) {
+	var month = zpadStrInt(d.getMonth() + 1, 2);
+	var date = zpadStrInt(d.getDate(), 2);
+	var hours = zpadStrInt(d.getHours(), 2);
+	var minutes = zpadStrInt(d.getMinutes(), 2);
+	var seconds = zpadStrInt(d.getSeconds(), 2);
+	return `${d.getFullYear()}${month}${date}T${hours}${minutes}${seconds}${tzStr(d)}`;
+}
+
+
+function tzStr(d) {
+	var x = d.getTimezoneOffset();
+	var totalMinutes = Math.abs(x);
+	var minutes = totalMinutes % 60;
+	var hours = (totalMinutes - minutes) / 60;
+	var absStr = `${zpadStrInt(hours, 2)}${zpadStrInt(minutes, 2)}`;
+	return (x > 0 ? "-" : "+") + absStr;
+}
+
+
+function zpadStrInt(i, n) {
+	var s = `${i}`;
+	if(n < s.length)
+		return s;
+	return "0".repeat(n - s.length) + s;
+}
+
+main();
