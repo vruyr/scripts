@@ -16,7 +16,7 @@ function main() {
 		var selectedTrees = w.content().selectedTrees;
 		for(var ii = 0; ii < selectedTrees.length; ii++) {
 			var task = selectedTrees[ii].value();
-			result.push(taskToText(task));
+			result.push(taskToDirectiveText(task));
 		}
 	}
 
@@ -28,7 +28,43 @@ function main() {
 }
 
 
-function taskToText(task) {
+function taskToDirectiveText(task) {
+	var result = [];
+
+	function line(indent, str) {
+		result.push([indent, str]);
+	}
+
+	line(0, ".. container:: thoughts");
+	line(0, "");
+
+	var taskName = task.name();
+	if(taskName) {
+		line(1, taskName);
+		line(0, "");
+	}
+
+	line(1, "Created");
+	line(2, dateToStr(task.creationDate()));
+	line(1, "Modified");
+	line(2, dateToStr(task.modificationDate()));
+
+	var note = task.note().trim();
+	if(note) {
+		line(0, "");
+		line(1, note);
+	}
+
+	var indentWidth = 4;
+	result = result.map(function(args) {
+		return " ".repeat(indentWidth * args[0]) + args[1];
+	});
+
+	return result.join("\n") + "\n";
+}
+
+
+function taskToSectionText(task) {
 	var dateStr = dateToShortStr(task.creationDate());
 	var taskName = task.name();
 	var maxShortTitleLength = 46;
