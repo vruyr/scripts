@@ -14,15 +14,17 @@ mkdir -p "$dest_dir"
 
 
 sphinx_build_opts=(
-	-C
+	# -C
 	-D project="$project_name"
 	-D copyright="$(date +%Y), $(id -F)"
 	-D version="$version_str"
 	-D release="$version_str"
 	-D master_doc="${master_doc%.rst}"
 	-D source_suffix=.rst
-	-D extensions=sphinx.ext.todo,sphinx.ext.intersphinx
+	-D extensions=sphinx.ext.todo,sphinx.ext.ifconfig,sphinx.ext.intersphinx
 	-D html_theme=sphinx_rtd_theme
+	-D html_copy_source=0
+	-D html_show_copyright=1
 	-D pygments_style=sphinx
 	-D todo_include_todos=1
 	-D todo_link_only=1
