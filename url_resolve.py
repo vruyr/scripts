@@ -13,7 +13,8 @@ def main(argv=None):
 			continue
 		opener = urllib.request.build_opener()
 		opener.addheaders = [
-			("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/601.2.7 (KHTML, like Gecko) Version/9.0.1 Safari/601.2.7")
+			# ("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/601.2.7 (KHTML, like Gecko) Version/9.0.1 Safari/601.2.7")
+			("User-Agent", "curl/7.43.0")
 		]
 		response = opener.open(url)
 		url = strip_url(response.geturl())
@@ -67,7 +68,9 @@ def strip_url(url):
 	urlparts = urllib.parse.urlparse(url)
 	scheme, netloc, path, params, query, fragment = urlparts
 	query = urllib.parse.parse_qs(query)
-	remove = [
+	netloc_parts = netloc.partition(":")
+
+	remove_from_all = [
 		"utm_source",
 		"utm_medium",
 		"utm_campaign",
@@ -75,9 +78,14 @@ def strip_url(url):
 		"ncid",
 		"?ncid"
 	]
-	for r in remove:
+	for r in remove_from_all:
 		if r in query:
 			del query[r]
+
+	if netloc_parts[0] == "www.youtube.com" or netloc_parts[0] == "youtube.com":
+		if query.get("feature") == ["youtu.be"]:
+			del query["feature"]
+
 	query = urllib.parse.urlencode(query, doseq=True, safe="?")
 	url = urllib.parse.urlunparse((scheme, netloc, path, params, query, fragment))
 	return url
