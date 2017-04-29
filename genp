@@ -6,44 +6,39 @@ import argparse, shutil, string
 def main(argv=None):
 	opts = _parse_args(argv)
 
-	genp = genpin if opts.type == "pin" else genpassword
-
 	# https://en.wikipedia.org/wiki/Cryptographically_secure_pseudorandom_number_generator#Special_designs
 	with open("/dev/random", "rb") as fo:
-		passcodes = [genp(fo, opts.length) for i in range(opts.number)]
+		passcodes = [genp(fo, opts.length, opts.alphabet) for i in range(opts.number)]
 		per_line = (opts.width + 1) // (opts.length + 1)
 		while passcodes:
 			print(" ".join(passcodes[:per_line]))
 			passcodes = passcodes[per_line:]
 
 
-def genpin(fo, length):
-	pin = int.from_bytes(fo.read(length), "little", signed=False) % (10 ** length)
-	pin = ("{:0%s}" % length).format(pin)
-	return pin
-
-
-def genpassword(fo, length):
-	alphabet = "".join([
-		string.ascii_lowercase,
-		string.ascii_uppercase,
-		string.digits,
-		# string.punctuation.encode("ascii").translate(None, b"'\"").decode("ascii"),
-	])
+def genp(fo, length, alphabet):
 	assert len(alphabet) <= 255
-
 	return "".join(alphabet[x % len(alphabet)] for x in fo.read(length))
 
 
 def _parse_args(argv=None):
 	parser = argparse.ArgumentParser(prog=(argv[0] if argv is not None else None))
 	parser.add_argument(
+		"--alphabet", "-a",
+		dest="alphabet",
+		action="store",
+		type=str,
+		metavar="CHARACTERS",
+		default=None
+	)
+	parser.add_argument(
 		"--type", "-t",
+		dest="type",
 		choices=["pin", "password"],
-		default="pin"
+		default="password"
 	)
 	parser.add_argument(
 		"--number", "-n",
+		dest="number",
 		action="store",
 		type=int,
 		metavar="N",
@@ -52,6 +47,7 @@ def _parse_args(argv=None):
 	)
 	parser.add_argument(
 		"--length", "-l",
+		dest="length",
 		action="store",
 		type=int,
 		metavar="N",
@@ -60,11 +56,19 @@ def _parse_args(argv=None):
 	)
 	parser.add_argument(
 		"--width", "-w",
+		dest="width",
 		action="store",
 		type=int,
 		metavar="N",
 		default=None,
 		help="print no more than specified chars per line"
+	)
+	parser.add_argument(
+		"--include-punctuation",
+		dest="punctuation",
+		action="store_true",
+		default=False,
+		help="include punctuation in the alphabet if --type password is specified, no effect otherwise"
 	)
 	opts = parser.parse_args(argv[1:] if argv is not None else None)
 
@@ -84,6 +88,19 @@ def _parse_args(argv=None):
 		opts.number = (screen_size.lines - 2) * per_line
 		if opts.number % per_line:
 			opts.number = opts.number + per_line - opts.number % per_line
+
+	if opts.alphabet is None:
+		if opts.type == "pin":
+			opts.alphabet = string.digits
+		elif opts.type == "password":
+			opts.alphabet = (string.ascii_lowercase + string.ascii_uppercase + string.digits)
+			if opts.punctuation:
+				opts.alphabet += string.punctuation.encode("ascii").translate(None, b"'\"").decode("ascii")
+		else:
+			parser.error("invalid passcode type")
+
+	if not opts.alphabet:
+		parser.error("alphabet can be be empty")
 
 	return opts
 
