@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 
-import argparse, shutil, string
+import argparse, shutil, string, collections
 
 
 def main(argv=None):
 	opts = _parse_args(argv)
 
 	# https://en.wikipedia.org/wiki/Cryptographically_secure_pseudorandom_number_generator#Special_designs
+	per_line = (opts.width + 1) // (opts.length + 1)
 	with open("/dev/random", "rb") as fo:
 		passcodes = [genp(fo, opts.length, opts.alphabet) for i in range(opts.number)]
-		per_line = (opts.width + 1) // (opts.length + 1)
-		while passcodes:
-			print(" ".join(passcodes[:per_line]))
-			passcodes = passcodes[per_line:]
+	while passcodes:
+		print(" ".join(passcodes[:per_line]))
+		passcodes = passcodes[per_line:]
 
 
 def genp(fo, length, alphabet):
@@ -21,7 +21,32 @@ def genp(fo, length, alphabet):
 
 
 def _parse_args(argv=None):
+	passcode_type_defaults = collections.namedtuple("passcode_type_defaults", ["alphabet", "length"])
+	passcode_types = {
+		"pin": passcode_type_defaults(
+			alphabet=string.digits,
+			length=6,
+		),
+		"password": passcode_type_defaults(
+			alphabet=(string.ascii_lowercase + string.ascii_uppercase + string.digits),
+			length=32,
+		),
+		"punctuation": passcode_type_defaults(
+			alphabet=string.punctuation.encode("ascii").translate(None, b"'\"").decode("ascii"),
+			length=32,
+		),
+		"hex": passcode_type_defaults(
+			alphabet=(string.digits + string.ascii_uppercase[:6]),
+			length=32,
+		),
+	}
 	parser = argparse.ArgumentParser(prog=(argv[0] if argv is not None else None))
+	parser.add_argument(
+		"--type", "-t",
+		dest="type",
+		choices=passcode_types.keys(),
+		default="password"
+	)
 	parser.add_argument(
 		"--alphabet", "-a",
 		dest="alphabet",
@@ -29,21 +54,6 @@ def _parse_args(argv=None):
 		type=str,
 		metavar="CHARACTERS",
 		default=None
-	)
-	parser.add_argument(
-		"--type", "-t",
-		dest="type",
-		choices=["pin", "password", "hex"],
-		default="password"
-	)
-	parser.add_argument(
-		"--number", "-n",
-		dest="number",
-		action="store",
-		type=int,
-		metavar="N",
-		default=None,
-		help="how many PINs to generate"
 	)
 	parser.add_argument(
 		"--length", "-l",
@@ -64,34 +74,22 @@ def _parse_args(argv=None):
 		help="print no more than specified chars per line"
 	)
 	parser.add_argument(
-		"--include-punctuation",
-		dest="punctuation",
-		action="store_true",
-		default=False,
-		help="include punctuation in the alphabet if --type password is specified, no effect otherwise"
+		"--number", "-n",
+		dest="number",
+		action="store",
+		type=int,
+		metavar="N",
+		default=None,
+		help="how many PINs to generate"
 	)
 
 	opts = parser.parse_args(argv[1:] if argv is not None else None)
 
-	default_alphabet = None
-	default_length = None
-
-	if opts.type == "pin":
-		default_length = 6
-		default_alphabet = string.digits
-	elif opts.type == "password":
-		default_length = 32
-		default_alphabet = (string.ascii_lowercase + string.ascii_uppercase + string.digits)
-		if punctuation:
-			default_alphabet += string.punctuation.encode("ascii").translate(None, b"'\"").decode("ascii")
-	elif opts.type == "hex":
-		default_length = 32
-		default_alphabet = string.digits + string.ascii_uppercase[:6]
-	else:
-		parser.error("invalid passcode type")
+	if opts.alphabet is None:
+		opts.alphabet = passcode_types[opts.type].alphabet
 
 	if opts.length is None:
-		opts.length = length
+		opts.length = passcode_types[opts.type].length
 
 	screen_size = shutil.get_terminal_size()
 
@@ -107,11 +105,8 @@ def _parse_args(argv=None):
 		if opts.number % per_line:
 			opts.number = opts.number + per_line - opts.number % per_line
 
-	if opts.alphabet is None:
-		opts.alphabet = alphabet
-
 	if not opts.alphabet:
-		parser.error("alphabet can be be empty")
+		parser.error("alphabet can not be empty")
 
 	return opts
 
