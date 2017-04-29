@@ -6,13 +6,17 @@ import argparse, shutil, string, collections
 def main(argv=None):
 	opts = _parse_args(argv)
 
-	# https://en.wikipedia.org/wiki/Cryptographically_secure_pseudorandom_number_generator#Special_designs
 	per_line = (opts.width + 1) // (opts.length + 1)
-	with open("/dev/random", "rb") as fo:
+	with random_generator() as fo:
 		passcodes = [genp(fo, opts.length, opts.alphabet) for i in range(opts.number)]
 	while passcodes:
 		print(" ".join(passcodes[:per_line]))
 		passcodes = passcodes[per_line:]
+
+
+def random_generator():
+	# https://en.wikipedia.org/wiki/Cryptographically_secure_pseudorandom_number_generator#Special_designs
+	return open("/dev/random", "rb")
 
 
 def genp(fo, length, alphabet):
