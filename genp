@@ -33,7 +33,7 @@ def _parse_args(argv=None):
 	parser.add_argument(
 		"--type", "-t",
 		dest="type",
-		choices=["pin", "password"],
+		choices=["pin", "password", "hex"],
 		default="password"
 	)
 	parser.add_argument(
@@ -70,10 +70,28 @@ def _parse_args(argv=None):
 		default=False,
 		help="include punctuation in the alphabet if --type password is specified, no effect otherwise"
 	)
+
 	opts = parser.parse_args(argv[1:] if argv is not None else None)
 
+	default_alphabet = None
+	default_length = None
+
+	if opts.type == "pin":
+		default_length = 6
+		default_alphabet = string.digits
+	elif opts.type == "password":
+		default_length = 32
+		default_alphabet = (string.ascii_lowercase + string.ascii_uppercase + string.digits)
+		if punctuation:
+			default_alphabet += string.punctuation.encode("ascii").translate(None, b"'\"").decode("ascii")
+	elif opts.type == "hex":
+		default_length = 32
+		default_alphabet = string.digits + string.ascii_uppercase[:6]
+	else:
+		parser.error("invalid passcode type")
+
 	if opts.length is None:
-		opts.length = 6 if opts.type == "pin" else 32
+		opts.length = length
 
 	screen_size = shutil.get_terminal_size()
 
@@ -90,14 +108,7 @@ def _parse_args(argv=None):
 			opts.number = opts.number + per_line - opts.number % per_line
 
 	if opts.alphabet is None:
-		if opts.type == "pin":
-			opts.alphabet = string.digits
-		elif opts.type == "password":
-			opts.alphabet = (string.ascii_lowercase + string.ascii_uppercase + string.digits)
-			if opts.punctuation:
-				opts.alphabet += string.punctuation.encode("ascii").translate(None, b"'\"").decode("ascii")
-		else:
-			parser.error("invalid passcode type")
+		opts.alphabet = alphabet
 
 	if not opts.alphabet:
 		parser.error("alphabet can be be empty")
