@@ -8,9 +8,23 @@ var global = this;
 
 function main(...args) {
 	var options = {
-		update: {flags: ["-u"], value: false},
+		update: {
+			flags: ["-u"],
+			value: false,
+			description: "actually update the project review dates",
+		},
+		help: {
+			flags: ["-h", "--help"],
+			value: false,
+			description: "show the help text and exit",
+		},
 	};
 	parseArgs(options, args);
+
+	if(options.help.value) {
+		$.printf(`${getHelpText(options)}\n`);
+		return;
+	}
 
 	var app = Application("OmniFocus");
 	var documents = app.documents();
@@ -82,7 +96,7 @@ function main(...args) {
 		countProjectsPerDay(projectsOnDateBefore, dateToStr(project.nextReviewDate()));
 		countProjectsPerDay(projectsOnDateAfter, dateToStr(nextReviewDate));
 
-		if(options.update) {
+		if(options.update.value) {
 			project.reviewInterval = reviewInterval;
 			project.nextReviewDate = nextReviewDate;
 		}
@@ -115,6 +129,16 @@ function parseArgs(options, args) {
 	}
 }
 
+function getHelpText(options) {
+	var text = [];
+	for(var name of Object.getOwnPropertyNames(options)) {
+		var option = options[name];
+		text.push([option.flags.join(", "), option.description]);
+	}
+	var width = Math.max(...text.map(tuple => tuple[0].length));
+	text = text.map(tuple => ljust(tuple[0], width + 4) + tuple[1]).join("\n");
+	return text;
+}
 
 function ljust(s, len) {
 	return s + " ".repeat(len - s.length);
