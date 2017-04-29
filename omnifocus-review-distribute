@@ -1,0 +1,197 @@
+#!/usr/bin/env osascript -l JavaScript
+
+ObjC.import("stdio");
+
+var global = this;
+
+
+function main(...args) {
+	var app = Application("OmniFocus");
+	var documents = app.documents();
+	$.printf(`Application OmniFocus has ${documents.length} documents.\n`);
+	var openProjects = [];
+	var maxProjectNameLen = 0;
+	for(var i = 0; i < documents.length; i++) {
+		var document = documents[i];
+		if(typeof document === "undefined")
+			continue;
+		var projects = document.flattenedProjects();
+		$.printf(`Document ${i} has ${projects.length} projects.\n`);
+		for(var ii = 0; ii < projects.length; ii++) {
+			var project = projects[ii];
+			if(typeof project === "undefined")
+				continue;
+			if(project.status() === "done")
+				continue;
+			openProjects.push(project);
+			maxProjectNameLen = Math.max(maxProjectNameLen, project.name().length);
+		}
+	}
+
+	$.printf(`Collected ${openProjects.length} open projects.\n`);
+
+	$.printf(`Sorting projects by last review date.\n`);
+	openProjects.sort(function(p1, p2) {
+		return p1.lastReviewDate() - p2.lastReviewDate();
+	});
+
+	var reviewInterval = {unit: "week", steps: 4, fixed: true};
+	var numReviewProjectsPerWeek = (Math.floor(openProjects.length / reviewInterval.steps));
+	var nextReviewDate = new Date();
+	nextReviewDate.setHours(0, 0, 0, 0);
+	nextReviewDate.setDate(nextReviewDate.getDate() + (6 - nextReviewDate.getDay()) - 7);
+
+	$.printf(`Reviews per week: ${numReviewProjectsPerWeek}\n`);
+
+	$.printf(`\n${ljust("Project Name", maxProjectNameLen)}    ${ljust("Last Reviewe Date", 25)}    ${ljust("Next Review Date", 25)}\n`);
+	$.printf(`${"-".repeat(maxProjectNameLen)}    ${"-".repeat(25)}    ${"-".repeat(25)}\n`);
+
+	var projectsOnDate = {
+	};
+	function feedProjectNextReviewDate(projectNextReviewDate) {
+		if(typeof projectsOnDate[projectNextReviewDate] === "undefined") {
+			projectsOnDate[projectNextReviewDate] = 0;
+		}
+		projectsOnDate[projectNextReviewDate] += 1;
+	}
+
+	for(var i = 0; i < openProjects.length; i++) {
+		var project = openProjects[i];
+		if(i % numReviewProjectsPerWeek == 0) {
+			nextReviewDate.setDate(nextReviewDate.getDate() + 7);
+		}
+
+		// project.reviewInterval = reviewInterval;
+		// project.nextReviewDate = nextReviewDate;
+
+		feedProjectNextReviewDate(dateToStr(project.nextReviewDate()));
+
+		$.printf(`${ljust(project.name(), maxProjectNameLen)}    ${dateToStr(project.lastReviewDate())}    ${dateToStr(project.nextReviewDate())}    ${RepetitionIntervalToString(project.reviewInterval())}\n`);
+	}
+	$.printf(JSON.stringify(projectsOnDate, undefined, 4) + "\n");
+
+	return; // Returned value will be printed on the console by osascript
+}
+
+
+function ljust(s, len) {
+	return s + " ".repeat(len - s.length);
+}
+
+
+function RepetitionIntervalToString(x) {
+	return `Every ${x.steps} ${x.unit} (${x.fixed ? "fixed" : "not fixed"})`;
+}
+
+
+function taskToDirectiveText(task) {
+	var result = [];
+
+	function line(indent, str) {
+		result.push([indent, str]);
+	}
+
+	line(0, ".. container:: thoughts");
+	line(0, "");
+
+	var taskName = task.name();
+	if(taskName) {
+		line(1, taskName);
+		line(0, "");
+	}
+
+	line(1, "Created");
+	line(2, dateToStr(task.creationDate()));
+	line(1, "Modified");
+	line(2, dateToStr(task.modificationDate()));
+
+	var note = task.note().trim();
+	if(note) {
+		line(0, "");
+		line(1, note);
+	}
+
+	var indentWidth = 4;
+	result = result.map(function(args) {
+		return " ".repeat(indentWidth * args[0]) + args[1];
+	});
+
+	return result.join("\n") + "\n";
+}
+
+
+function taskToSectionText(task) {
+	var dateStr = dateToShortStr(task.creationDate());
+	var taskName = task.name();
+	var maxShortTitleLength = 46;
+	var shortTitle = taskName.length <= maxShortTitleLength ? taskName : `${taskName.slice(0, maxShortTitleLength - 3)}...`;
+	var title = `${dateStr} ${shortTitle}`;
+	var headingString = "-".repeat(title.length);
+	var firstParagraph = "";
+	if(shortTitle != taskName)
+		firstParagraph = taskName;
+	var note = task.note().trim();
+
+	var result = [];
+
+	result.push(title);
+	result.push(headingString);
+
+	result.push("");
+	result.push(`Last modified: ${dateToStr(task.modificationDate())}`);
+
+	if(firstParagraph) {
+		result.push("");
+		result.push(firstParagraph);
+	}
+
+	if(note) {
+		result.push("");
+		result.push(note);
+	}
+
+	return result.join("\n") + "\n";
+}
+
+
+function dateToStr(d) {
+	var month = zpadStrInt(d.getMonth() + 1, 2);
+	var date = zpadStrInt(d.getDate(), 2);
+	var hours = zpadStrInt(d.getHours(), 2);
+	var minutes = zpadStrInt(d.getMinutes(), 2);
+	var seconds = zpadStrInt(d.getSeconds(), 2);
+	return `${d.getFullYear()}-${month}-${date} ${hours}:${minutes}:${seconds} ${tzStr(d)}`;
+}
+
+
+function dateToShortStr(d) {
+	var month = zpadStrInt(d.getMonth() + 1, 2);
+	var date = zpadStrInt(d.getDate(), 2);
+	var hours = zpadStrInt(d.getHours(), 2);
+	var minutes = zpadStrInt(d.getMinutes(), 2);
+	var seconds = zpadStrInt(d.getSeconds(), 2);
+	return `${d.getFullYear()}${month}${date}T${hours}${minutes}${seconds}${tzStr(d)}`;
+}
+
+
+function tzStr(d) {
+	var x = d.getTimezoneOffset();
+	var totalMinutes = Math.abs(x);
+	var minutes = totalMinutes % 60;
+	var hours = (totalMinutes - minutes) / 60;
+	var absStr = `${zpadStrInt(hours, 2)}${zpadStrInt(minutes, 2)}`;
+	return (x > 0 ? "-" : "+") + absStr;
+}
+
+
+function zpadStrInt(i, n) {
+	var s = `${i}`;
+	if(n < s.length)
+		return s;
+	return "0".repeat(n - s.length) + s;
+}
+
+
+function run(args) {
+	main(...args);
+}
