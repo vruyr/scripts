@@ -2,10 +2,16 @@
 
 ObjC.import("stdio");
 
+
 var global = this;
 
 
 function main(...args) {
+	var options = {
+		update: {flags: ["-u"], value: false},
+	};
+	parseArgs(options, args);
+
 	var app = Application("OmniFocus");
 	var documents = app.documents();
 	$.printf(`Application OmniFocus has ${documents.length} documents.\n`);
@@ -37,40 +43,76 @@ function main(...args) {
 
 	var reviewInterval = {unit: "week", steps: 4, fixed: true};
 	var numReviewProjectsPerWeek = (Math.floor(openProjects.length / reviewInterval.steps));
+	var numReviewProjectsPerWeekLeftover = openProjects.length - (numReviewProjectsPerWeek * reviewInterval.steps);
 	var nextReviewDate = new Date();
 	nextReviewDate.setHours(0, 0, 0, 0);
 	nextReviewDate.setDate(nextReviewDate.getDate() + (6 - nextReviewDate.getDay()) - 7);
 
 	$.printf(`Reviews per week: ${numReviewProjectsPerWeek}\n`);
+	$.printf(`Leftover projects: ${numReviewProjectsPerWeekLeftover}\n`);
 
 	$.printf(`\n${ljust("Project Name", maxProjectNameLen)}    ${ljust("Last Reviewe Date", 25)}    ${ljust("Next Review Date", 25)}\n`);
 	$.printf(`${"-".repeat(maxProjectNameLen)}    ${"-".repeat(25)}    ${"-".repeat(25)}\n`);
 
-	var projectsOnDate = {
-	};
-	function feedProjectNextReviewDate(projectNextReviewDate) {
-		if(typeof projectsOnDate[projectNextReviewDate] === "undefined") {
-			projectsOnDate[projectNextReviewDate] = 0;
+	function countProjectsPerDay(counts, projectNextReviewDate) {
+		if(typeof counts[projectNextReviewDate] === "undefined") {
+			counts[projectNextReviewDate] = 0;
 		}
-		projectsOnDate[projectNextReviewDate] += 1;
+		counts[projectNextReviewDate] += 1;
 	}
 
+	var projectsOnDateBefore = {};
+	var projectsOnDateAfter = {};
+
+	var numProjectsToProcess = 0;
 	for(var i = 0; i < openProjects.length; i++) {
 		var project = openProjects[i];
-		if(i % numReviewProjectsPerWeek == 0) {
+
+		if(!numProjectsToProcess) {
 			nextReviewDate.setDate(nextReviewDate.getDate() + 7);
+			numProjectsToProcess = numReviewProjectsPerWeek;
+			if(numReviewProjectsPerWeekLeftover) {
+				numProjectsToProcess += 1;
+				numReviewProjectsPerWeekLeftover -= 1;
+			}
 		}
 
-		// project.reviewInterval = reviewInterval;
-		// project.nextReviewDate = nextReviewDate;
+		numProjectsToProcess -= 1;
 
-		feedProjectNextReviewDate(dateToStr(project.nextReviewDate()));
+		countProjectsPerDay(projectsOnDateBefore, dateToStr(project.nextReviewDate()));
+		countProjectsPerDay(projectsOnDateAfter, dateToStr(nextReviewDate));
+
+		if(options.update) {
+			project.reviewInterval = reviewInterval;
+			project.nextReviewDate = nextReviewDate;
+		}
 
 		$.printf(`${ljust(project.name(), maxProjectNameLen)}    ${dateToStr(project.lastReviewDate())}    ${dateToStr(project.nextReviewDate())}    ${RepetitionIntervalToString(project.reviewInterval())}\n`);
 	}
-	$.printf(JSON.stringify(projectsOnDate, undefined, 4) + "\n");
+
+	$.printf("\n");
+	$.printf("Before: " + JSON.stringify(projectsOnDateBefore, Object.getOwnPropertyNames(projectsOnDateBefore).sort(), 4) + "\n");
+	$.printf("\n");
+	$.printf("After: " + JSON.stringify(projectsOnDateAfter, Object.getOwnPropertyNames(projectsOnDateAfter).sort(), 4) + "\n");
 
 	return; // Returned value will be printed on the console by osascript
+}
+
+
+function parseArgs(options, args) {
+	var i;
+	for(var name of Object.getOwnPropertyNames(options)) {
+		var option = options[name];
+		for(var flag of option.flags) {
+			if((i = args.indexOf(flag)) >= 0) {
+				option.value = true;
+				args.splice(i, 1);
+			}
+		}
+	}
+	if(args.length) {
+		throw new Error("Unrecognized options: " + JSON.stringify(args));
+	}
 }
 
 
