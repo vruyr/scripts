@@ -28,25 +28,40 @@ function main(...args) {
 
 	var app = Application("OmniFocus");
 	var documents = app.documents();
+
 	$.printf(`Application OmniFocus has ${documents.length} documents.\n`);
-	var openProjects = [];
-	var maxProjectNameLen = 0;
+
 	for(var i = 0; i < documents.length; i++) {
 		var document = documents[i];
 		if(typeof document === "undefined")
 			continue;
-		var projects = document.flattenedProjects();
-		$.printf(`Document ${i} has ${projects.length} projects.\n`);
-		for(var ii = 0; ii < projects.length; ii++) {
-			var project = projects[ii];
-			if(typeof project === "undefined")
-				continue;
-			if(project.status() === "done")
-				continue;
-			openProjects.push(project);
-			maxProjectNameLen = Math.max(maxProjectNameLen, project.name().length);
-		}
+		$.printf("\n");
+		processDocument(document, options.update.value);
 	}
+
+	return; // Returned value will be printed on the console by osascript
+}
+
+
+function processDocument(document, shouldUpdate) {
+	var projects = document.flattenedProjects();
+	$.printf(`Document ${JSON.stringify(document.name())} has ${projects.length} projects.\n`);
+
+	var openProjects = [];
+	var maxProjectNameLen = 0;
+
+	for(var i = 0; i < projects.length; i++) {
+		var project = projects[i];
+		if(typeof project === "undefined")
+			continue;
+		if(project.status() === "done")
+			continue;
+		openProjects.push(project);
+		maxProjectNameLen = Math.max(maxProjectNameLen, project.name().length);
+	}
+
+	var columnPadding = " | ";
+	var projectIndexWidth = `${projects.length.toLocaleString()}`.length;
 
 	$.printf(`Collected ${openProjects.length} open projects.\n`);
 
@@ -56,6 +71,7 @@ function main(...args) {
 	});
 
 	var reviewInterval = {unit: "week", steps: 4, fixed: true};
+
 	var numReviewProjectsPerWeek = (Math.floor(openProjects.length / reviewInterval.steps));
 	var numReviewProjectsPerWeekLeftover = openProjects.length - (numReviewProjectsPerWeek * reviewInterval.steps);
 	var nextReviewDate = new Date();
@@ -65,8 +81,26 @@ function main(...args) {
 	$.printf(`Reviews per week: ${numReviewProjectsPerWeek}\n`);
 	$.printf(`Leftover projects: ${numReviewProjectsPerWeekLeftover}\n`);
 
-	$.printf(`\n${ljust("Project Name", maxProjectNameLen)}    ${ljust("Last Reviewe Date", 25)}    ${ljust("Next Review Date", 25)}\n`);
-	$.printf(`${"-".repeat(maxProjectNameLen)}    ${"-".repeat(25)}    ${"-".repeat(25)}\n`);
+	$.printf("\n");
+
+	var columns = [
+		ljust("#", projectIndexWidth),
+		ljust("Project Name", maxProjectNameLen),
+		ljust("Last Reviewe Date", 25),
+		ljust("Next Review Date", 25),
+		ljust("New Next Review Date", 25),
+		ljust("Review Interval", 25)
+	];
+	$.printf(columns.join(columnPadding) + "\n");
+	columns = [
+		"-".repeat(projectIndexWidth),
+		"-".repeat(maxProjectNameLen),
+		"-".repeat(25),
+		"-".repeat(25),
+		"-".repeat(25),
+		"-".repeat(25),
+	];
+	$.printf(columns.join(columnPadding) + "\n");
 
 	function countProjectsPerDay(counts, projectNextReviewDate) {
 		if(typeof counts[projectNextReviewDate] === "undefined") {
@@ -96,20 +130,27 @@ function main(...args) {
 		countProjectsPerDay(projectsOnDateBefore, dateToStr(project.nextReviewDate()));
 		countProjectsPerDay(projectsOnDateAfter, dateToStr(nextReviewDate));
 
-		if(options.update.value) {
+		var columns = [
+			ljust(i.toLocaleString(), projectIndexWidth),
+			ljust(project.name(), maxProjectNameLen),
+			dateToStr(project.lastReviewDate()),
+			dateToStr(project.nextReviewDate()),
+			ljust(RepetitionIntervalToString(project.reviewInterval()), 25),
+			dateToStr(nextReviewDate),
+		];
+		$.printf(columns.join(columnPadding) + "\n");
+
+		if(shouldUpdate) {
 			project.reviewInterval = reviewInterval;
 			project.nextReviewDate = nextReviewDate;
 		}
-
-		$.printf(`${ljust(project.name(), maxProjectNameLen)}    ${dateToStr(project.lastReviewDate())}    ${dateToStr(project.nextReviewDate())}    ${RepetitionIntervalToString(project.reviewInterval())}\n`);
 	}
 
 	$.printf("\n");
 	$.printf("Before: " + JSON.stringify(projectsOnDateBefore, Object.getOwnPropertyNames(projectsOnDateBefore).sort(), 4) + "\n");
 	$.printf("\n");
 	$.printf("After: " + JSON.stringify(projectsOnDateAfter, Object.getOwnPropertyNames(projectsOnDateAfter).sort(), 4) + "\n");
-
-	return; // Returned value will be printed on the console by osascript
+	$.printf("\n");
 }
 
 
