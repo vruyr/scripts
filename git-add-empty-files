@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+set -o errexit
+
+function main() {
+	declare -a files
+	local create_new=""
+
+	while [ "$#" -gt 0 ]; do
+		local arg="$1"; shift
+		case "$arg" in
+			"--new"|"-n")
+				create_new="yes"
+				;;
+			*)
+				files+=( "$arg" )
+				;;
+		esac
+	done
+
+	if [ ${#files[@]} -le 0 ]; then
+		echo "Need at least one file name"
+		return 1;
+	fi
+
+	for file in "${files[@]}"; do
+		add_empty_file "$create_new" "$file"
+	done
+}
+
+function add_empty_file() {
+	local create_new="$1"
+	local filepath="$2"
+	local mode="100644"
+
+	if [ -z "$create_new" -a ! -f "$filepath" ]; then
+		echo "File '$filepath' doesn't seem to exist."
+		return 2
+	fi
+
+	local status="$(git status --ignored --porcelain=v1 "$filepath")"
+
+	if [ "${status:0:3}" != "?? " -a "${status:0:3}" != "" ]; then
+		echo "Can only add untracked files -- '$status'"
+		return 3
+	fi
+
+	git update-index --add --cacheinfo "${mode},$(git hash-object -t blob -w /dev/null),${filepath}"
+}
+
+main "$@"
