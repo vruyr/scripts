@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+# export    GIT_AUTHOR_DATE="1493992380 -0400"
+# export GIT_COMMITTER_DATE="1493992380 -0400"
+
+commit=$(git commit-tree $(git hash-object -w -t tree /dev/null) </dev/null)
+
+echo "$commit"
