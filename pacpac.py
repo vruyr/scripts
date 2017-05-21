@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import sys, argparse, asyncio, subprocess
 assert sys.version_info[:2] == (3, 5), "Python 3.5 only!"
 
@@ -6,24 +6,57 @@ assert sys.version_info[:2] == (3, 5), "Python 3.5 only!"
 async def main(*, argv=None, loop=None):
 	opts = _parse_args(argv=argv)
 	xx = (await pacman(opts.host, "-Qg")).decode().splitlines()
+
+	complete_groups = dict()
+	for x in xx:
+		group, package = x.split(maxsplit=2)
+		complete_groups.setdefault(group, list()).append(package)
+
 	# groups repeat - dict is not a good collection for this
-	groups = dict(tuple(reversed(x.split(maxsplit=2))) for x in xx)
+	package_to_group_map = dict(tuple(reversed(x.split(maxsplit=2))) for x in xx)
 	packages = set((await pacman(opts.host, "-Qqtte")).decode().splitlines())
-	result = {}
+	item_to_constituents_map = {}
 	while packages:
 		p = packages.pop()
-		if p in groups:
-			result.setdefault(groups[p], list()).append(p)
+		if p in package_to_group_map:
+			item_to_constituents_map.setdefault(package_to_group_map[p], list()).append(p)
 		else:
-			result[p] = None
+			item_to_constituents_map[p] = None
 
-	for p, c in sorted(result.items()):
-		print(p)
-		while c or []:
-			x = c[:10]
-			print(" " * 4, " ".join(x))
-			c = c[10:]
+	for item, content in sorted(item_to_constituents_map.items()):
+		print(item)
+		if content is None:
+			continue
 
+		show_wrapped(content, indent=4)
+
+		not_installed = set(complete_groups[item]) - set(content)
+		extra_installed = set(content) - set(complete_groups[item])
+
+		if not_installed:
+			print("\n    Not Installed:")
+			show_wrapped(sorted(not_installed), indent=8)
+			print()
+
+		if extra_installed:
+			print("\n    Extra Installed:")
+			show_wrapped(sorted(extra_installed), indent=8)
+			print()
+
+
+def show_wrapped(array, *, indent=0, maxperline=10):
+	if array is None:
+		return
+
+	if not isinstance(indent, str) and indent is not None:
+		indent = indent * " "
+	elif indent is None:
+		indent = ""
+
+	while array or []:
+		x = array[:maxperline]
+		print(indent + " ".join(x))
+		array = array[maxperline:]
 
 
 async def pacman(host, *argv):

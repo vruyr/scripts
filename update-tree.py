@@ -2,6 +2,7 @@
 
 import sys, argparse, re, functools, datetime, locale
 
+#TODO There is a bug where a nephew node would be considered a child node if the parent of nephew doesn't have the label.
 
 def main(argv=None):
 	opts = _parse_args(argv=argv)

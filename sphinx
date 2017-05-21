@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 set -o errexit
 
 dest_root=~/Downloads
@@ -14,7 +16,7 @@ mkdir -p "$dest_dir"
 
 
 sphinx_build_opts=(
-	# -C
+	-C
 	-D project="$project_name"
 	-D copyright="$(date +%Y), $(id -F)"
 	-D version="$version_str"

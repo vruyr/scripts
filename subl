@@ -17,7 +17,7 @@ function exec_subl()
 		echo "It seems that you have more than one Sublime Text app, and that confuses the hell out of me." >&2
 		return 2
 	}
-	python -c 'import sys; print sys.argv[1:];' "${apps[0]}/${relpath}" "$@"
+	/usr/bin/python2 -c 'import sys; print sys.argv[1:];' "${apps[0]}/${relpath}" "$@"
 	exec "${apps[0]}/${relpath}" "$@"
 }
 

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+function find() { "/usr/bin/find" "$@"; }
+function test() { builtin test "$@"; }
+
 test "${#@}" -eq 0 && {
 	echo "Need folders to delete as arguments."
 	exit 1
