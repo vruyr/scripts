@@ -2,19 +2,23 @@
 
 import sys
 assert sys.version_info[:2] in [(3, 6)]
-import imaplib, getpass, hmac, email
+import imaplib, getpass, hmac, email, shlex, subprocess, re, pathlib
 
 
 #TODO (encode|decode|b["']) - fix all the binary to text conversions, remove all hard-coded encodings.
+verbosity=None
 
 
 def main(opts):
+	global verbosity
+	verbosity = opts.verbosity
+
 	server  = opts.server or input("Server: ")
 	username = opts.username or input("Username: ") or getpass.getuser()
-	password = opts.password or getpass.getpass("Password ({u}@{s}): ".format(u=username, s=server))
+	password = opts.password or get_password(server, username)
 
 	conn = imaplib.IMAP4_SSL(server)
-	print("Server Capabilities:", ", ".join(conn.capabilities))
+	show_msg(2, "Server Capabilities: {}", ", ".join(conn.capabilities))
 
 	if "AUTH=CRAM-MD5" in conn.capabilities:
 		if True:
@@ -25,56 +29,136 @@ def main(opts):
 				h2 = username.strip() + " " + h1
 				return h2.encode("ascii")
 			conn.authenticate("CRAM-MD5", cram_responder)
-	elif "AUTH=PLAIN  DOESNT-WORK" in conn.capabilities:
-		def plain_responder(challenge):
-			print("Challenge:", challenge)
-			return ("{0}\x00{0}\x00{1}".format("username","password")).encode("ascii")
-		conn.authenticate("PLAIN", plain_responder)
+	elif "AUTH=PLAIN" in conn.capabilities:
+		if True:
+			conn.login(username, password)
+		else:
+			#TODO AUTH=PLAIN doesn't work
+			def plain_responder(challenge):
+				show_msg(1, "Challenge: {!r}", challenge)
+				return ("{0}\x00{0}\x00{1}".format("username", "password")).encode("ascii")
+			conn.authenticate("PLAIN", plain_responder)
 	else:
-		print("Error: No supported authentication mechanisms are supported by the server.")
+		show_msg(-1, "Error: No known authentication mechanisms are supported by the server.")
 		return
 
 	if opts.list_mailboxes:
-		status, mailboxes = conn.list()
+		# https://www.imapwiki.org/ClientImplementation/MailboxList
+		status, mailboxes = conn.list("\"\"", "*")
 		assert status == "OK"
 		for mailbox in mailboxes:
-			mailbox = mailbox.decode("ASCII")
-			print(mailbox)
+			tags, sep, path = parse_imap_list_response_entry(decode_imap(mailbox))
+			print(" ".join(tags).ljust(10), sep.join(p for p in path))
+	else:
+		if opts.mailbox is None:
+			opts.mailbox = "INBOX"
 
-	response_type, response_data = conn.select(opts.mailbox, readonly=True)
-	if response_type != "OK":
-		print(response_type, response_data)
-		return
+	if opts.mailbox is not None:
+		mailbox = encode_imap(opts.mailbox)
+		mailbox = b'"' + mailbox + b'"' #TODO Why do we need to quotes here and what happens if the name already has a quote.
+		response_type, response_data = conn.select(mailbox, readonly=True)
+		if response_type != "OK":
+			show_msg(-1, "{!r}, {!r}", response_type, response_data)
+			return
 
-	print()
-	response_type, response_data = conn.search(None, "ALL")
-	assert response_type == "OK"
-	assert len(response_data) == 1
-	msgns = response_data[0].split()
-	for msgn in msgns:
-		response_type, response_data = conn.fetch(msgn, "(RFC822)")
+		print()
+		response_type, response_data = conn.search(None, "ALL")
 		assert response_type == "OK"
-		(envelope_start, message_data), envelope_end = response_data
-		expected_envelope_start = b"%b (RFC822 {%d}"% (msgn, len(message_data))
-		assert envelope_start == expected_envelope_start
-		assert envelope_end == b")"
-		rfc822msg = message_data.decode("UTF-8")
-		msg = email.message_from_string(rfc822msg)
-		print(
-			"{n}\nFrom: {f}\nTo: {t}\nDate: {d}\nSubject: {s}".format(
-				n=msgn.decode("UTF-8"),
-				f=msg["from"],
-				t=msg["to"],
-				d=msg["subject"],
-				s=msg["date"],
-			),
-			end="\n\n"
-		)
+		assert len(response_data) == 1
+		msgns = response_data[0].split()
+		for msgn in msgns:
+			response_type, response_data = conn.fetch(msgn, "(RFC822)")
+			assert response_type == "OK"
+			(envelope_start, message_data), envelope_end = response_data
+			expected_envelope_start = b"%b (RFC822 {%d}"% (msgn, len(message_data))
+			assert envelope_start == expected_envelope_start
+			assert envelope_end == b")"
+			rfc822msg = message_data.decode("UTF-8")
+			msg = email.message_from_string(rfc822msg)
+			print(
+				"{n}\nFrom: {f}\nTo: {t}\nDate: {d}\nSubject: {s}\nMessage-ID: {i}".format(
+					n=msgn.decode("UTF-8"),
+					f=msg["From"],
+					t=msg["To"],
+					d=msg["Subject"],
+					s=msg["Date"],
+					i=msg["Message-ID"],
+				),
+				end="\n\n"
+			)
+
+
+def decode_imap(x):
+	return x.replace(b"&", b"+").decode("utf-7").replace("+", "&") #TODO This is a very dirty hack
+
+
+def encode_imap(x):
+	return x.replace("&", "+").encode("utf-7").replace(b"+", b"&") #TODO This is a very dirty hack
+
+
+def parse_imap_list_response_entry(entry):
+	m = re.match(r"""^\(([^)]*)\)\s+"([^"])"\s+"?([^"]+)"?$""", entry)
+	if m:
+		tags, sep, path = m.groups()
+		path = path.split(sep)
+		tags = tags.split()
+		for tag in ["\\HasNoChildren", "\\HasChildren"]:
+			if tag not in tags:
+				continue
+			tags.remove(tag)
+		return (tags, sep, path)
+	else:
+		return entry
+
+
+def get_password(server, username):
+	p = subprocess.run(
+		["security", "find-internet-password", "-r", "imap", "-s", server, "-a", username, "-w"],
+		shell=False,
+		stdin=subprocess.DEVNULL,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.PIPE
+	)
+	if p.returncode == 0:
+		password = p.stdout.decode().rstrip("\r\n")
+		show_msg(2, "Found the password in Keychain.")
+		return password
+	show_msg(2, "No password found in Keychain, prompting.")
+	password = getpass.getpass("Password ({u}@{s}): ".format(u=username, s=server))
+	show_msg(0, "To save the password, execute: {}", " ".join(shlex.quote(x) for x in [
+		"security", "add-internet-password",
+		"-r", "imap",
+		"-s", server,
+		"-a", username,
+		"-w"
+	]))
+	return password
+
+
+def show_msg(verbosity_, msg, *args, **kwargs):
+	global verbosity
+	if verbosity_ > verbosity:
+		return
+	print(msg.format(*args, **kwargs))
 
 
 def sysmain():
 	import argparse
 	parser = argparse.ArgumentParser()
+	parser.add_argument(
+		"--verbose", "-v",
+		dest="verbosity",
+		action="count",
+		default=0,
+		help="increase verbosity, can be used multiple times"
+	)
+	parser.add_argument(
+		"--quiet", "-q",
+		dest="_negative_verbosity",
+		action="count",
+		default=0,
+		help="decrease verbosity, can be used multiple times"
+	)
 	parser.add_argument(
 		"--server", "-s",
 		dest="server",
@@ -101,8 +185,7 @@ def sysmain():
 		dest="mailbox",
 		action="store",
 		metavar="MAILBOX",
-		default="INBOX",
-		help="default is INBOX"
+		default=None,
 	)
 	parser.add_argument(
 		"--list-mailboxes", "-l",
@@ -111,6 +194,8 @@ def sysmain():
 		default=False,
 	)
 	opts = parser.parse_args()
+	opts.verbosity -= opts._negative_verbosity
+	del opts._negative_verbosity
 	return main(opts)
 
 
