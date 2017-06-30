@@ -10,11 +10,19 @@ function main(...args) {
 	var options = {
 		update: {
 			flags: ["-u"],
+			action: "store_true",
 			value: false,
 			description: "actually update the project review dates",
 		},
+		document: {
+			flags: ["-d"],
+			action: "store",
+			value: null,
+			description: "name of the document to operate on"
+		},
 		help: {
 			flags: ["-h", "--help"],
+			action: "store_true",
 			value: false,
 			description: "show the help text and exit",
 		},
@@ -29,15 +37,54 @@ function main(...args) {
 	var app = Application("OmniFocus");
 	var documents = app.documents();
 
-	$.printf(`Application OmniFocus has ${documents.length} documents.\n`);
-
+	var documentsByName = {};
 	for(var i = 0; i < documents.length; i++) {
 		var document = documents[i];
 		if(typeof document === "undefined")
 			continue;
-		$.printf("\n");
-		processDocument(document, options.update.value);
+		var name = document.name();
+		if(!documentsByName[name]) {
+			documentsByName[name] = [];
+		}
+		documentsByName[name].push(document);
 	}
+
+	function askToChooseDocument() {
+		$.printf("Please specify one using -d flag from the following:\n");
+		for(var i = 0; i < documents.length; i++) {
+			var document = documents[i];
+			if(typeof document === "undefined")
+				continue;
+			$.printf(`\t${document.name()}\n`);
+		}
+
+	}
+
+	if(!options.document.value) {
+		if(documents.length == 1){
+			options.document.value = documents[0].name();
+		} else {
+			$.printf("OmniFocus has more than one documents available.\n");
+			askToChooseDocument();
+			return;
+		}
+	}
+
+	var document = documentsByName[options.document.value];
+	if(!document) {
+		$.printf(`${JSON.stringify(options.document.value)} is not a valid OmniFocus document name.\n`)
+		askToChooseDocument();
+		return;
+	} else {
+		if(document.length === 1) {
+			document = document[0]
+		} else {
+			$.printf(`More than one documents exist with the name ${JSON.stringify(options.document.value)}, rename one of them and try again.`);
+			return;
+		}
+	}
+
+	processDocument(document, options.update.value);
 
 	return; // Returned value will be printed on the console by osascript
 }
@@ -159,9 +206,20 @@ function parseArgs(options, args) {
 	for(var name of Object.getOwnPropertyNames(options)) {
 		var option = options[name];
 		for(var flag of option.flags) {
+			//TODO Invert these two loops
 			if((i = args.indexOf(flag)) >= 0) {
-				option.value = true;
-				args.splice(i, 1);
+				switch(option.action) {
+					case "store_true":
+						option.value = true;
+						args.splice(i, 1);
+						break;
+					case "store":
+						option.value = args[i + 1];
+						args.splice(i, 2);
+						break;
+					default:
+						throw new Error("Unrecognized action " + JSON.stringify(option.action));
+				}
 			}
 		}
 	}
