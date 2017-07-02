@@ -182,8 +182,8 @@ function processDocument(document, shouldUpdate) {
 			ljust(project.name(), maxProjectNameLen),
 			dateToStr(project.lastReviewDate()),
 			dateToStr(project.nextReviewDate()),
-			ljust(RepetitionIntervalToString(project.reviewInterval()), 25),
 			dateToStr(nextReviewDate),
+			ljust(RepetitionIntervalToString(project.reviewInterval()), 25),
 		];
 		$.printf(columns.join(columnPadding) + "\n");
 
