@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+set -o errexit
+
+function find_vscode() {
+	local IFS=$'\n'
+	local apps=(
+		$(mdfind 'kMDItemKind == "Application" && kMDItemCFBundleIdentifier == "com.microsoft.VSCode"')
+	)
+
+	if [ "${#apps[@]}" -eq 0 ]; then
+		echo >&2 "Can't find the Visual Studio Code app bundle."
+		return 1
+	elif [ "${#apps[@]}" -ne 1 ]; then
+		echo >&2 "Expected to find exactly one app but found multiple:"
+		echo >&2 "${apps[*]}"
+		echo >&2 "---"
+		return 1
+	fi
+
+	local vscode="${apps[0]}"
+
+	echo "$vscode"
+	return 0
+}
+
+code="$(find_vscode)/Contents/Resources/app/bin/code"
+exec "$code" "$@"
