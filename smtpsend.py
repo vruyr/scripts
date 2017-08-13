@@ -5,6 +5,9 @@ import sys; assert sys.version_info[:2] in [(3, 5), (3, 6)]
 import argparse, logging, email.mime.text, getpass, socket, smtplib
 
 
+# TODO change --smtp parameter to --server and start using `secret` just like imap.py does
+
+
 lgr = logging.getLogger(__name__)
 
 
