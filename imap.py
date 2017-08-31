@@ -2,7 +2,7 @@
 
 import sys
 assert sys.version_info[:2] in [(3, 6)]
-import imaplib, getpass, hmac, email, shlex, subprocess, re, pathlib
+import imaplib, getpass, hmac, email, shlex, subprocess, re, pathlib, json
 
 
 #TODO (encode|decode|b["']) - fix all the binary to text conversions, remove all hard-coded encodings.
@@ -46,9 +46,20 @@ def main(opts):
 		# https://www.imapwiki.org/ClientImplementation/MailboxList
 		status, mailboxes = conn.list("\"\"", "*")
 		assert status == "OK"
-		for mailbox in mailboxes:
-			tags, sep, path = parse_imap_list_response_entry(decode_imap(mailbox))
-			print(" ".join(tags).ljust(10), sep.join(p for p in path))
+		if opts.show_in_json:
+			result = []
+			for mailbox in mailboxes:
+				tags, sep, path = parse_imap_list_response_entry(decode_imap(mailbox))
+				result.append({
+					"tags": list(tags),
+					"path": list(p for p in path),
+				})
+			json.dump(result, sys.stdout, indent=4)
+			sys.stdout.write("\n")
+		else:
+			for mailbox in mailboxes:
+				tags, sep, path = parse_imap_list_response_entry(decode_imap(mailbox))
+				print(" ".join(tags).ljust(10), sep.join(p for p in path))
 	else:
 		if opts.mailbox is None:
 			opts.mailbox = "INBOX"
@@ -190,6 +201,12 @@ def sysmain():
 	parser.add_argument(
 		"--list-mailboxes", "-l",
 		dest="list_mailboxes",
+		action="store_true",
+		default=False,
+	)
+	parser.add_argument(
+		"--json", "-j",
+		dest="show_in_json",
 		action="store_true",
 		default=False,
 	)
