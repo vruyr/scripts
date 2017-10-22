@@ -15,7 +15,7 @@ Dependencies:
 # Python Standard Library
 import sys, argparse, subprocess, json, collections, re, datetime, decimal, os, pathlib, shlex
 import threading, itertools, time
-# https://docopt.org
+# https://pypi.python.org/pypi/docopt
 import docopt
 # https://pypi.python.org/pypi/pytz
 import pytz
