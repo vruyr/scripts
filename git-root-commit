@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+
+set -o errexit
+
+
+function main() {
+	local param_date=""
+	local param_merge=1
+	while [ "$#" -gt 0 ]; do
+		local arg="$1"; shift
+		case "$arg" in
+			"--no-merge")
+				param_merge=""
+				;;
+			"--date")
+				param_date="$1"; shift
+				;;
+			*)
+				echo "Invalid argument: $arg"
+				return 1
+				;;
+		esac
+	done
+
+	if [ -n "$param_date" ]; then
+		export    GIT_AUTHOR_DATE="$param_date"
+		export GIT_COMMITTER_DATE="$param_date"
+	fi
+
+	empty_tree=$(git hash-object -w -t tree /dev/null)
+	commit=$(git commit-tree "$empty_tree" </dev/null)
+	echo "$commit"
+
+	if [ -n "$param_merge" ]; then
+		git merge --ff-only "$commit"
+	fi
+}
+
+
+# https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced
+main "$@"
