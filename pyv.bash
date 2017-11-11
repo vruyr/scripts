@@ -41,4 +41,20 @@ function __pyv_complete() {
 	)
 }
 
+
 complete -F __pyv_complete pyv
+
+
+function __prompt_message_show_pyv() {
+	if [ -z "$VIRTUAL_ENV" ]; then
+		return
+	fi
+	python - "$VIRTUAL_ENV" "$HOME" <<-EOT
+		from __future__ import print_function
+		import os, sys
+		path = sys.argv[1]
+		base = sys.argv[2]
+		relpath=os.path.relpath(path, base)
+		print(relpath if not relpath.startswith(".." + os.path.sep) else path)
+	EOT
+}
