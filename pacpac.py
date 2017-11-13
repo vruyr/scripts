@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import sys, argparse, asyncio, subprocess
-assert sys.version_info[:2] == (3, 5), "Python 3.5 only!"
+assert sys.version_info[:2] in [(3, 5), (3, 6)], "Incompatible python version."
 
 
 async def main(*, argv=None, loop=None):
