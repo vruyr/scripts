@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+pacman -Ss "$@" | \
+	sed '
+		N;s/\n[[:space:]]*/\t/;
+		s/^\([^[:space:]]\+\)[[:space:]]\+\([^[:space:]]\+\)\(.*\)/\1\t\2\3/
+	' | \
+	column -t -s $'\t' | \
+	less -FXRS

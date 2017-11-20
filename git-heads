@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+
+import sys, argparse, asyncio, subprocess, collections
+assert sys.version_info[:2] in [(3, 5), (3, 6)]
+
+
+async def main(*, argv=None, loop=None):
+	opts = _parse_args(argv=argv)
+	refsg = (l.split(" ", 1) for l in (await git("show-ref", "--head", "--dereference")).splitlines())
+	refs = collections.defaultdict(list)
+	for h, r in refsg:
+		r = r.strip()
+		# if r.startswith("refs/remotes/") and r.endswith("/HEAD"):
+		# 	continue
+		tag_suffix = "^{}"
+		if r.startswith("refs/tags") and not r.endswith(tag_suffix):
+			#TODO Instead of doing this, check if the tag is annotated and skip
+			continue
+		if r.endswith(tag_suffix):
+			r = r[:-len(tag_suffix)]
+		refs[h].append(r)
+
+	tasks = dict()
+
+	hashes = list(refs.keys())
+	for i1 in range(len(hashes)):
+		for i2 in range(i1+1, len(hashes)):
+			tasks[(hashes[i1], hashes[i2])] = asyncio.ensure_future(git("merge-base", hashes[i1], hashes[i2]))
+
+	await asyncio.wait(tasks.values(), return_when=asyncio.ALL_COMPLETED)
+
+	hashes = set(hashes)
+	exclude = set()
+	for (h1, h2), resultf in tasks.items():
+		hb = resultf.result().strip()
+		exclude |= set([h1, h2]) & set([hb])
+
+	def filter_ref(ref):
+		for x in opts.excludes:
+			if ref.startswith(x):
+				return False
+		return True
+
+	for h in hashes:
+		if h in exclude:
+			continue
+		these_refs = [r for r in refs[h] if filter_ref(r)]
+		if not these_refs:
+			continue
+		print(decorate_hash(h), ", ".join(map(shorten_ref, these_refs)) + "\x1b[0m")
+
+
+def decorate_hash(h):
+	return "\x1b[38;5;235m" + str(h) + "\x1b[0m"
+
+
+def shorten_ref(ref):
+	ref = clip_prefix_and_decorate(ref, prefix="refs/heads/", color="\x1b[32m")
+	ref = clip_prefix_and_decorate(ref, prefix="refs/remotes/", color="\x1b[38;5;237m", reset="")
+	ref = clip_prefix_and_decorate(ref, prefix="refs/notes/", replace="notes/", color="\x1b[38;5;237m", reset="")
+	ref = clip_prefix_and_decorate(ref, prefix="refs/tags/", color="\x1b[33m")
+	return ref
+
+
+def clip_prefix_and_decorate(s, *, prefix, replace="", color=None, reset=None):
+	if not s.startswith(prefix):
+		return s
+
+	if color:
+		if reset is None:
+			reset = "\x1b[0m"
+	else:
+		color = ""
+		reset = ""
+
+	return color + replace + s[len(prefix):] + reset
+
+
+async def git(*args, loop=None):
+	stdout_data = await get_process_stdout("git", *args, loop=loop)
+	return stdout_data.decode()
+
+
+async def get_process_stdout(*args, loop=None):
+	p = await asyncio.create_subprocess_exec(
+		*args,
+		stdout=subprocess.PIPE,
+		loop=loop
+	)
+	stdout_data, stderr_data = await p.communicate()
+	return stdout_data
+
+
+def _parse_args(argv=None):
+	parser = argparse.ArgumentParser(
+		prog=(argv[0] if argv is not None else None),
+		description=None,
+		epilog=None
+	)
+	parser.add_argument(
+		"--exclude", "-x",
+		dest="excludes",
+		action="append",
+		metavar="PREFIX",
+		type=str,
+		default=[],
+		help="exclude references that start with the specified prefix",
+	)
+	opts = parser.parse_args((argv[1:] if argv is not None else None))
+	return opts
+
+
+def _smain(*, argv=None):
+	if sys.platform == "win32":
+		loop = asyncio.ProactorEventLoop()
+		asyncio.set_event_loop(loop)
+	else:
+		loop = asyncio.get_event_loop()
+	loop.run_until_complete(main(argv=argv, loop=loop))
+
+
+if __name__ == "__main__":
+	try:
+		sys.exit(_smain())
+	except KeyboardInterrupt:
+		print(file=sys.stderr)

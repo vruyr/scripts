@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+
+set -o errexit
+
+
+git_log_format="%C(green)%h %C(red)%<(13,trunc)%ad %C(blue)%<(20,trunc)%aN%C(auto)%d %C(reset)%s"
+
+
+function main() {
+	local interactive=""
+	local upstream=""
+	local head=""
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--help|-h)
+			echo "Just read the source code: $0"
+			shift
+			return 0
+			;;
+		--interactive|--review-individual-commits|-i)
+			interactive=1
+			shift
+			break
+			;;
+		--)
+			shift
+			break
+			;;
+		--*|-*)
+			echo "Invalid option $1";
+			shift
+			return 1
+			;;
+		*)
+			break
+		esac
+
+		shift
+	done
+	echo "$@"
+	if [ $# -gt 2 ]; then
+		echo "Usage: git review [options] [[upstream] branch_or_commit]"
+		exit 1
+	elif [[ $# -eq 2 ]]; then
+		upstream="$1"
+		head=${2:-$(git symbolic-ref --short HEAD)}
+	else
+		head=${1:-$(git symbolic-ref --short HEAD)}
+		upstream=$(git rev-parse --short --symbolic-full-name "${head}@{upstream}")
+		upstream=${upstream#refs/remotes/}
+	fi
+
+	declare -a revisions
+	rev_range="${upstream}..${head}"
+	echo "Reviewing: $rev_range"
+	revisions=( $(git rev-list --topo-order --reverse "$rev_range") )
+	if [ ${#revisions[@]} -eq 0 ]; then
+		echo "Nothing to review"
+		return 0
+	fi
+	echo
+	git_log --graph --boundary --format="${git_log_format}%n" "$rev_range" --
+
+	if [ "$interactive" ]; then
+		echo
+		echo "Showing diffs for each of the above commits one-by-one."
+		echo
+
+		for rev in ${revisions[@]}; do
+			echo
+			git_log --format="${git_log_format}" --stat "${rev}^!"
+
+			echo
+			confirm_run git difftool --dir-diff --no-prompt "$rev"~ "$rev"
+		done
+	else
+		confirm_run git difftool --dir-diff --no-prompt "$upstream" "$head"
+	fi
+}
+
+
+function git_log() {
+	git --no-pager log --date=relative "$@"
+}
+
+
+function confirm_run() {
+	printf "$ "; printf "%q " "$@"; echo
+	read -p "Run command [Y]? " response
+	case "$response" in
+	y|Y|yes|Yes|YES|"")
+		"$@"
+		;;
+	*)
+		;;
+	esac
+}
+
+
+main "$@"
