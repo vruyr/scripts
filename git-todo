@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
 
+todo_tag=${1:+:$1}
+if [ "${todo_tag}" == "${todo_tag%:}" ]; then
+	rest_of_the_tag='\(:[:a-zA-Z0-9_]*\)\?'
+else
+	rest_of_the_tag='\(:*\)'
+fi
+while [ "${todo_tag}" != "${todo_tag%:}" ]; do
+	todo_tag="${todo_tag%:}"
+done
+
 git ls-files -z \
 | \
 xargs -0 awk '{printf "%s:%d\t%s\n", FILENAME, FNR, $0}' \
 | \
-gsed -n 's/^\([^:]*:[0-9]\+\).*\?\(TODO[[:space:]]*:\?[[:space:]]*vruyr:\?\([^[:space:]]*\)\)[[:space:]]*\(.*\)\?/\x1b[38;2;50;64;113m\1\x1b[0m\t\x1b[38;2;50;64;173m\2\x1b[0m\t\4/p' \
+gsed -n 's/^\([^:]*:[0-9]\+\).*\?\(TODO'"$todo_tag""$rest_of_the_tag"'\)[[:space:]]\+\(.*\)/\x1b[38;2;50;64;113m\1\x1b[0m\t\x1b[38;2;50;64;173m\2\x1b[0m\t\4/p' \
 | \
-expand -t 60,110
-# column -t -s $'\t'
+column -t -s $'\t' | \
+less -FXRS
+# expand -t 60,110
 
