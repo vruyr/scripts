@@ -1,22 +1,68 @@
 #!/usr/bin/env bash
 
-todo_tag=${1:+:$1}
-if [ "${todo_tag}" == "${todo_tag%:}" ]; then
-	rest_of_the_tag='\(:[:a-zA-Z0-9_]*\)\?'
-else
-	rest_of_the_tag='\(:*\)'
-fi
-while [ "${todo_tag}" != "${todo_tag%:}" ]; do
-	todo_tag="${todo_tag%:}"
-done
 
-git ls-files -z \
-| \
-xargs -0 awk '{printf "%s:%d\t%s\n", FILENAME, FNR, $0}' \
-| \
-gsed -n 's/^\([^:]*:[0-9]\+\).*\?\(TODO'"$todo_tag""$rest_of_the_tag"'\)[[:space:]]\+\(.*\)/\x1b[38;2;50;64;113m\1\x1b[0m\t\x1b[38;2;50;64;173m\2\x1b[0m\t\4/p' \
-| \
-column -t -s $'\t' | \
-less -FXRS
-# expand -t 60,110
+function main() {
+	if [ $# -gt 1 -o "$1" == "--help" -o "$1" == "-h" ]; then
+		echo "USAGE: $(basename "$0") [<todo_tag>:|<todo_tag_prefix>]"
+		return 1
+	fi
+	if [ -t 1 ]; then
+		local style_loc='\x1b[34m'
+		local style_tag='\x1b[36m'
+		local style_txt='\x1b[37m'
+	else
+		local style_loc=''
+		local style_tag=''
+		local style_txt=''
+	fi
+	get_file_list | cat_lines | filter_todo_lines "$1" "$style_loc" "$style_tag" "$style_txt" | display_table
+}
 
+
+function get_file_list() {
+	git ls-files -z
+}
+
+
+function cat_lines() {
+	xargs -0 awk '{printf "%s:%d\t%s\n", FILENAME, FNR, $0}'
+}
+
+
+function filter_todo_lines() {
+	local todo_tag=${1:+:$1}
+	local style_loc="$2"
+	local style_tag="$3"
+	local style_txt="$4"
+	if [ -n "$style_loc" -o -n "$style_tag" -o -n "$style_txt" ]; then
+		local style_reset='\x1b[0m'
+	else
+		local style_reset=''
+	fi
+
+	if [ "${todo_tag}" == "${todo_tag%:}" ]; then
+		rest_of_the_tag='\(:[:a-zA-Z0-9_]*\)\?'
+	else
+		rest_of_the_tag='\(:*\)'
+	fi
+	while [ "${todo_tag}" != "${todo_tag%:}" ]; do
+		todo_tag="${todo_tag%:}"
+	done
+
+	local replacement="$style_loc"'\1'"$style_reset"'\t'"$style_tag"'\2'"$style_reset"'\t'"$style_txt"'\4'"$style_reset"
+	gsed -n 's/^\([^:]*:[0-9]\+\).*\?\(TODO'"$todo_tag""$rest_of_the_tag"'\)[[:space:]]\+\(.*\)/'"$replacement"'/p'
+}
+
+
+function display_table() {
+	case "$(uname -s)" in
+		"Darwin")
+			column -t -s $'\t' | less -FXRS
+			;;
+		*)
+			expand -t 60,110 | less -FXRS
+	esac
+}
+
+
+main "$@"
