@@ -4,7 +4,7 @@ git ls-files -z \
 | \
 xargs -0 awk '{printf "%s:%d\t%s\n", FILENAME, FNR, $0}' \
 | \
-sed -n 's/^\([^:]*:[0-9]\+\).*\?\(TODO[[:space:]]*:\?[[:space:]]*vruyr:\?\([^[:space:]]*\)\)[[:space:]]*\(.*\)\?/\x1b[38;2;50;64;113m\1\x1b[0m\t\x1b[38;2;50;64;173m\2\x1b[0m\t\4/p' \
+gsed -n 's/^\([^:]*:[0-9]\+\).*\?\(TODO[[:space:]]*:\?[[:space:]]*vruyr:\?\([^[:space:]]*\)\)[[:space:]]*\(.*\)\?/\x1b[38;2;50;64;113m\1\x1b[0m\t\x1b[38;2;50;64;173m\2\x1b[0m\t\4/p' \
 | \
 expand -t 60,110
 # column -t -s $'\t'
