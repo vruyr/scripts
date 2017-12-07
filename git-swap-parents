@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+
+
+set -o errexit
+
+
+function _main() {
+	[ "${FUNCNAME[$((${#FUNCNAME[@]} - 1))]}" == "main" ] || return
+
+	if [ $# -gt 1 ]; then
+		echo "Usage: $(basename "$0") [<commitish>]" >&2
+		return 1
+	fi
+	local commit_ish=${1:-HEAD}
+
+	if [ "$(git cat-file -t "${commit_ish}")" != "commit" ]; then
+		echo "'${commit_ish}' is not a valid commit" >&2
+		return 1
+	fi
+
+	local commit_id
+	commit_id=$(git rev-parse "$commit_ish")
+	echo "Swapping parents of ${commit_ish} which resolves to ${commit_id}" >&2
+
+	declare -a parents
+	parents=(
+		$(git rev-parse "${commit_id}^@")
+	)
+
+	if [ ${#parents[@]} -lt 2 ]; then
+		echo "The commit should have more than 1 parent for the swap to be possible" >&2
+		return 2
+	elif [ ${#parents[@]} -gt 2 ]; then
+		echo "Swapping more than 2 parents is not supported at the moment" >&2
+		return 3
+	fi
+
+	IFS='' read -r -d '' COMMIT_MESSAGE      < <(git_format "$commit_id" "%B") || true
+	IFS='' read -r -d '' TREE_HASH           < <(git_format "$commit_id" "%T") || true
+	IFS='' read -r -d '' GIT_AUTHOR_NAME     < <(git_format "$commit_id" "%an") || true
+	IFS='' read -r -d '' GIT_AUTHOR_EMAIL    < <(git_format "$commit_id" "%ae") || true
+	IFS='' read -r -d '' GIT_AUTHOR_DATE     < <(git_format "$commit_id" "%ad") || true
+	IFS='' read -r -d '' GIT_COMMITTER_NAME  < <(git_format "$commit_id" "%cn") || true
+	IFS='' read -r -d '' GIT_COMMITTER_EMAIL < <(git_format "$commit_id" "%ce") || true
+	IFS='' read -r -d '' GIT_COMMITTER_DATE  < <(git_format "$commit_id" "%cd") || true
+
+
+	export GIT_AUTHOR_NAME
+	export GIT_AUTHOR_EMAIL
+	export GIT_AUTHOR_DATE
+	export GIT_COMMITTER_NAME
+	export GIT_COMMITTER_EMAIL
+	export GIT_COMMITTER_DATE
+
+	local new_commit_id
+	new_commit_id=$(git commit-tree -F <(echo -n "$COMMIT_MESSAGE") -p ${parents[1]} -p "${parents[0]}" "$TREE_HASH")
+	echo "Created the new commit: ${new_commit_id}" >&2
+	echo "$new_commit_id"
+}
+
+
+function git_format() {
+	git show --no-patch --date=raw --format="format:$2" "$1"
+}
+
+
+_main "$@"
