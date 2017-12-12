@@ -2,10 +2,13 @@
 
 
 function main() {
-	if [ $# -gt 1 -o "$1" == "--help" -o "$1" == "-h" ]; then
-		echo "USAGE: $(basename "$0") [<todo_tag>:|<todo_tag_prefix>]"
+	if [ $# -eq 1 -a \( "$1" == "--help" -o "$1" == "-h" \) ]; then
+		echo "USAGE: $(basename "$0") [(<todo_tag>:|<todo_tag_prefix>) [search_path]...]"
 		return 1
 	fi
+	local tag_or_prefix="$1"
+	shift
+
 	if [ -t 1 ]; then
 		local style_loc='\x1b[34m'
 		local style_tag='\x1b[36m'
@@ -15,12 +18,12 @@ function main() {
 		local style_tag=''
 		local style_txt=''
 	fi
-	get_file_list | cat_lines | filter_todo_lines "$1" "$style_loc" "$style_tag" "$style_txt" | display_table
+	get_file_list "$@" | cat_lines | filter_todo_lines "$tag_or_prefix" "$style_loc" "$style_tag" "$style_txt" | display_table
 }
 
 
 function get_file_list() {
-	git ls-files -z
+	git ls-files -z -- "$@"
 }
 
 
