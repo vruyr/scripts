@@ -84,7 +84,7 @@ async def main(*, args=None, loop=None):
 	new_line(fo=fo)
 	for path in args:
 		for root, dirs, files in os.walk(path):
-			for dir_entry in itertools.chain(dirs, files):
+			for dir_entry in itertools.chain([""], dirs, files):
 				path = os.path.join(root, dir_entry)
 				last_line_set(path, fo=fo)
 
