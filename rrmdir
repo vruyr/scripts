@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# TODO Inspect extended attributes (xattr) before deleting files and unneeded folders.
+
 function find() { "/usr/bin/find" "$@"; }
 function test() { builtin test "$@"; }
 
