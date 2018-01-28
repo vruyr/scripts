@@ -1,4 +1,4 @@
-PYV_ROOT_DIR="${PYV_ROOT_DIR:-$HOME/.pyvenv}"
+PYV_ROOT_DIR="${PYV_ROOT_DIR:-$HOME/.bin/pyvenv}"
 
 function pyv() {
 	local default_file="$PYV_ROOT_DIR/.default"
