@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+
+
+function main() {
+	local once=''
+	if [ "$1" == "--once" ]; then
+		shift
+		once=1
+	fi
+
+	rebuild "$1" "$2"
+	reload "$(path_to_url "$2")"
+	if [ -z "$once" ]; then
+		watchmedo shell-command -R -W -c '"'"$0"'" --once "'"$1"'" "'"$2"'"' "$1"
+	fi
+}
+
+
+function reload() {
+	osascript<<-EOT
+	tell application "Safari"
+		set windowList to every window
+		repeat with aWindow in windowList
+			set tabList to every tab of aWindow
+			repeat with aTab in tabList
+				if (URL of aTab starts with "$1") then
+					tell aTab to do JavaScript "window.location.reload()"
+				end if
+			end repeat
+		end repeat
+	end tell
+	EOT
+}
+
+
+function rebuild() {
+	echo ---
+	sphinx-build -a -b html "$1" "$2"
+	echo ...
+	reload
+}
+
+
+function path_to_url() {
+	set -- "$(cd "$(dirname "$1")" && pwd)"
+	local url_path=''
+	{
+		local i ch hexch LC_CTYPE=C LC_ALL=;
+		for ((i = 0; i < ${#1}; ++i))
+		do
+			ch="${1:i:1}"
+			if [[ "$ch" =~ [/._~A-Za-z0-9-] ]]; then
+				url_path+="$ch"
+			else
+				printf -v hexch "%02X" "'$ch"
+				url_path+="%${hexch: -2:2}"
+			fi;
+		done
+	}
+	echo "file://$url_path"
+}
+
+
+main "$@"
