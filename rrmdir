@@ -27,7 +27,20 @@ do
 	}
 
 	# clear the garbage
-	find "$d" -type f \( -name '.DS_Store' -o -name 'Thumbs.db' \) -delete -print
+	find_garbage_args=(
+		-type f
+		\(
+			-name '.DS_Store'
+			-o
+			-name 'Thumbs.db'
+			-o
+			\(
+				-name '.localized'
+				-empty
+			\)
+		\)
+	)
+	find "$d" "${find_garbage_args[@]}" -delete -print
 
 	# recursive folder deletion
 	find "$d" -type d -mindepth 1 -empty -delete -print
