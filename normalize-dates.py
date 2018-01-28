@@ -1,4 +1,3 @@
-#!/Users/vruyr/.pyvenv/shell/bin/python
 #!/usr/bin/env python
 
 """
