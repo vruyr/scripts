@@ -2,23 +2,77 @@
 
 
 function main() {
-	if [ $# -eq 1 -a \( "$1" == "--help" -o "$1" == "-h" \) ]; then
-		echo "USAGE: $(basename "$0") [(<todo_tag>:|<todo_tag_prefix>) [search_path]...]"
+	local opt_show_list=""
+	local opt_sort_key=2
+	declare -a args
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		-h|--help)
+			show_usage "$(basename "$0")"
+			return 0
+			;;
+		-l|--list)
+			opt_show_list=1
+			shift
+			;;
+		-s|--sort)
+			shift
+			opt_sort_key="$1"
+			shift
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			show_usage "$(basename "$0")"
+			return 1
+			;;
+		*)
+			args+=( "$1" )
+			shift
+			;;
+		esac
+	done
+	set -- "${args[@]}" "$@"
+	unset args
+
+	if [ $# -gt 2 ]; then
+		show_usage "$(basename "$0")"
 		return 1
 	fi
+
 	local tag_or_prefix="$1"
 	shift
 
-	if [ -t 1 ]; then
+	if git config --get-colorbool todo; then
+		local viewer=display_table
 		local style_loc='\x1b[34m'
 		local style_tag='\x1b[36m'
 		local style_txt='\x1b[37m'
 	else
+		local viewer=cat
 		local style_loc=''
 		local style_tag=''
 		local style_txt=''
 	fi
-	get_file_list "$@" | cat_lines | filter_todo_lines "$tag_or_prefix" "$style_loc" "$style_tag" "$style_txt" | display_table
+
+	if [ "$opt_show_list" ]; then
+		get_file_list "$@" | cat_lines | \
+			filter_todo_lines "$tag_or_prefix" | \
+			sed -e 's/^[^'$'\t'']*'$'\t''\([^'$'\t'']*\)'$'\t''[^'$'\t'']*$/\1/' | \
+			sort -u
+	else
+		get_file_list "$@" | cat_lines | \
+			filter_todo_lines "$tag_or_prefix" "$style_loc" "$style_tag" "$style_txt" | \
+			sort -t $'\t' -k "$opt_sort_key" | \
+			$viewer
+	fi
+}
+
+
+function show_usage() {
+	echo "USAGE: $1 [(<todo_tag>:|<todo_tag_prefix>) [search_path]...]"
 }
 
 
@@ -53,17 +107,17 @@ function filter_todo_lines() {
 	done
 
 	local replacement="$style_loc"'\1'"$style_reset"'\t'"$style_tag"'\2'"$style_reset"'\t'"$style_txt"'\4'"$style_reset"
-	gsed -n 's/^\([^:]*:[0-9]\+\).*\?\(TODO'"$todo_tag""$rest_of_the_tag"'\)[[:space:]]\+\(.*\)/'"$replacement"'/p'
+	gsed -n 's/^\([^:]*:[0-9]\+\).*\?\(TODO'"$todo_tag""$rest_of_the_tag"'\)\([[:space:]]\+\(.*\)\)\?/'"$replacement"'/p'
 }
 
 
 function display_table() {
 	case "$(uname -s)" in
 		"Darwin")
-			column -t -s $'\t' | less -FXRS
+			column -t -s $'\t'
 			;;
 		*)
-			expand -t 60,110 | less -FXRS
+			expand -t 60,110
 	esac
 }
 
