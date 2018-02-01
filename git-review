@@ -75,7 +75,8 @@ function main() {
 			confirm_run git difftool --dir-diff --no-prompt "$rev"~ "$rev"
 		done
 	else
-		confirm_run git difftool --dir-diff --no-prompt "$upstream" "$head"
+		merge_base=$(git merge-base "$upstream" "$head")
+		confirm_run git difftool --dir-diff --no-prompt "$merge_base" "$head"
 	fi
 }
 
