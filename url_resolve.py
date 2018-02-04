@@ -6,6 +6,7 @@ import sys, argparse, urllib.parse, collections, urllib.request, html.parser
 def main(argv=None):
 	opts = parse_args(argv=argv)
 	urls = collections.deque(opts.urls)
+	encoding = "utf-8"
 	while urls:
 		url = urls.popleft()
 		if url == "-":
@@ -19,13 +20,24 @@ def main(argv=None):
 		response = opener.open(url)
 		url = strip_url(response.geturl())
 		charset = response.headers.get_param("charset")
-		body = response.read().decode(charset if isinstance(charset, str) else "utf-8")
+		body = response.read().decode(charset if isinstance(charset, str) else encoding)
 		parser = TitleExtractorHtmlParser()
 		parser.feed(body)
-		sys.stdout.buffer.write("".join(parser.titles).strip().encode("utf-8"))
-		sys.stdout.buffer.write("\n".encode())
-		sys.stdout.buffer.write(url.encode("utf-8"))
-		sys.stdout.buffer.write("\n".encode())
+		title = "".join(parser.titles).strip().encode(encoding)
+		url = url.encode(encoding)
+		if opts.format in ("simple",):
+			sys.stdout.buffer.write(title)
+			sys.stdout.buffer.write("\n".encode(encoding))
+			sys.stdout.buffer.write(url)
+			sys.stdout.buffer.write("\n".encode(encoding))
+		elif opts.format in ("taskpaper", "task", "t"):
+			sys.stdout.buffer.write("-\t".encode(encoding))
+			sys.stdout.buffer.write(title)
+			sys.stdout.buffer.write("\n\t".encode(encoding))
+			sys.stdout.buffer.write(url)
+			sys.stdout.buffer.write("\n".encode(encoding))
+		else:
+			raise ValueError("unrecognized output format - " + repr(opts.format))
 
 
 class TitleExtractorHtmlParser(html.parser.HTMLParser):
@@ -93,7 +105,14 @@ def strip_url(url):
 
 def parse_args(argv=None):
 	parser = argparse.ArgumentParser(prog=argv[0], description=None, epilog=None)
-	parser.add_argument("urls", action="store", nargs="+", metavar="URL")
+	parser.add_argument("urls", action="store", metavar="URL", nargs="+")
+	parser.add_argument("--format", "-f", action="store", metavar="FORMAT",
+		choices=[
+			"simple",
+			"taskpaper", "task", "t"
+		],
+		default="taskpaper",
+	)
 	opts = parser.parse_args(argv[1:])
 	return opts
 
