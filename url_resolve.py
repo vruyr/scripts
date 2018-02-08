@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys, argparse, urllib.parse, collections, urllib.request, html.parser
+import sys, argparse, urllib.parse, collections, urllib.request, html.parser, json
 
 
 def main(argv=None):
@@ -18,24 +18,30 @@ def main(argv=None):
 			("User-Agent", "curl/7.43.0")
 		]
 		response = opener.open(url)
-		url = strip_url(response.geturl())
+		resolved_url = strip_url(response.geturl())
 		charset = response.headers.get_param("charset")
 		body = response.read().decode(charset if isinstance(charset, str) else encoding)
 		parser = TitleExtractorHtmlParser()
 		parser.feed(body)
-		title = "".join(parser.titles).strip().encode(encoding)
-		url = url.encode(encoding)
+		title = "".join(parser.titles).strip()
 		if opts.format in ("simple",):
-			sys.stdout.buffer.write(title)
-			sys.stdout.buffer.write("\n".encode(encoding))
-			sys.stdout.buffer.write(url)
-			sys.stdout.buffer.write("\n".encode(encoding))
+			sys.stdout.write(title)
+			sys.stdout.write("\n")
+			sys.stdout.write(resolved_url)
+			sys.stdout.write("\n")
 		elif opts.format in ("taskpaper", "task", "t"):
-			sys.stdout.buffer.write("-\t".encode(encoding))
-			sys.stdout.buffer.write(title)
-			sys.stdout.buffer.write("\n\t".encode(encoding))
-			sys.stdout.buffer.write(url)
-			sys.stdout.buffer.write("\n".encode(encoding))
+			sys.stdout.write("-\t")
+			sys.stdout.write(title)
+			sys.stdout.write("\n\t")
+			sys.stdout.write(resolved_url)
+			sys.stdout.write("\n")
+		elif opts.format in ("json",):
+			sys.stdout.write(json.dumps({
+				"title": title,
+				"url": url,
+				"resolved_url": resolved_url,
+			}, indent="\t"))
+			sys.stdout.write("\n")
 		else:
 			raise ValueError("unrecognized output format - " + repr(opts.format))
 
@@ -109,7 +115,8 @@ def parse_args(argv=None):
 	parser.add_argument("--format", "-f", action="store", metavar="FORMAT",
 		choices=[
 			"simple",
-			"taskpaper", "task", "t"
+			"taskpaper", "task", "t",
+			"json",
 		],
 		default="taskpaper",
 	)
