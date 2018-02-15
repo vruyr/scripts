@@ -3,7 +3,7 @@
 set -o errexit
 
 
-git_log_format="%C(green)%h %C(red)%<(13,trunc)%ad %C(blue)%<(20,trunc)%aN%C(auto)%d %C(reset)%s"
+git_log_format="%C(green)%h %C(red)%<(25,trunc)%ad %C(blue)%<(20,trunc)%aN%C(auto)%d %C(reset)%s"
 
 
 function main() {
@@ -82,7 +82,7 @@ function main() {
 
 
 function git_log() {
-	git --no-pager log --date=relative "$@"
+	git --no-pager log --date=iso8601 "$@"
 }
 
 
