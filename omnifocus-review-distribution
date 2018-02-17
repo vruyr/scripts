@@ -126,11 +126,7 @@ function processDocument(document, shouldUpdate) {
 	nextReviewDate.setDate(nextReviewDate.getDate() + (reviewDayOfWeek - nextReviewDate.getDay()));
 
 	$.printf(`Collected ${openProjects.length} open projects.\n`);
-	var reviewIntervalText = `every ${reviewInterval.steps} ${reviewInterval.unit}s`;
-	if(reviewInterval.steps == 1) {
-		reviewIntervalText = `every ${reviewInterval.unit}`;
-	}
-	$.printf(`Reviewing projects ${reviewIntervalText} on ${daysOfWeeks[reviewDayOfWeek]}.\n`);
+	$.printf(`Reviewing projects on ${daysOfWeeks[reviewDayOfWeek]} ${repetitionIntervalToString(reviewInterval)}.\n`);
 	$.printf(`First review date: ${dateToStr(nextReviewDate)}\n`);
 	$.printf(`Reviews per week: ${numReviewProjectsPerWeek}${numReviewProjectsPerWeekLeftover > 0 ? ` or ${numReviewProjectsPerWeek + 1}` : ""}\n`);
 	// $.printf(`Leftover projects: ${numReviewProjectsPerWeekLeftover}\n`);
@@ -146,10 +142,10 @@ function processDocument(document, shouldUpdate) {
 	var columns = [
 		ljust("#", projectIndexWidth),
 		ljust("Project Name", maxProjectNameLen),
-		ljust("Last Reviewe Date", 25),
-		ljust("Next Review Date", 25),
+		ljust("Old Last Review Date", 25),
+		ljust("Old Next Review Date", 25),
+		ljust("Old Review Interval", 25),
 		ljust("New Next Review Date", 25),
-		ljust("Review Interval", 25)
 	];
 	$.printf(columns.join(columnPadding) + "\n");
 	columns = [
@@ -196,8 +192,8 @@ function processDocument(document, shouldUpdate) {
 			ljust(project.name(), maxProjectNameLen),
 			dateToStr(project.lastReviewDate()),
 			dateToStr(project.nextReviewDate()),
+			ljust(repetitionIntervalToString(project.reviewInterval()), 25),
 			dateToStr(nextReviewDate),
-			ljust(RepetitionIntervalToString(project.reviewInterval()), 25),
 		];
 		$.printf(columns.join(columnPadding) + "\n");
 
@@ -258,8 +254,15 @@ function ljust(s, len) {
 }
 
 
-function RepetitionIntervalToString(x) {
-	return `Every ${x.steps} ${x.unit} (${x.fixed ? "fixed" : "not fixed"})`;
+function repetitionIntervalToString(x) {
+	var result = "every";
+	if(x.steps === 1) {
+		result += ` ${x.unit}`;
+	} else {
+		result += ` ${x.steps} ${x.unit}s`;
+	}
+	result += ` (${x.fixed ? "fixed" : "not fixed"})`;
+	return result;
 }
 
 
