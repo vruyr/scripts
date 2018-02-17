@@ -110,25 +110,38 @@ function processDocument(document, shouldUpdate) {
 	var columnPadding = " | ";
 	var projectIndexWidth = `${projects.length.toLocaleString()}`.length;
 
-	$.printf(`Collected ${openProjects.length} open projects.\n`);
-
-	$.printf(`Sorting projects by last review date.\n`);
-	openProjects.sort(function(p1, p2) {
-		return p1.lastReviewDate() - p2.lastReviewDate();
-	});
-
-	var reviewInterval = {unit: "week", steps: 4, fixed: true};
+	var daysOfWeeks = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+	var reviewDayOfWeek = 6;
+	var maxReviewsPerWeek = 5;
+	var reviewInterval = {
+		unit: "week",
+		steps: Math.ceil(openProjects.length / maxReviewsPerWeek),
+		fixed: true
+	};
 
 	var numReviewProjectsPerWeek = (Math.floor(openProjects.length / reviewInterval.steps));
 	var numReviewProjectsPerWeekLeftover = openProjects.length - (numReviewProjectsPerWeek * reviewInterval.steps);
 	var nextReviewDate = new Date();
 	nextReviewDate.setHours(0, 0, 0, 0);
-	nextReviewDate.setDate(nextReviewDate.getDate() + (6 - nextReviewDate.getDay()) - 7);
+	nextReviewDate.setDate(nextReviewDate.getDate() + (reviewDayOfWeek - nextReviewDate.getDay()));
 
-	$.printf(`Reviews per week: ${numReviewProjectsPerWeek}\n`);
-	$.printf(`Leftover projects: ${numReviewProjectsPerWeekLeftover}\n`);
+	$.printf(`Collected ${openProjects.length} open projects.\n`);
+	var reviewIntervalText = `every ${reviewInterval.steps} ${reviewInterval.unit}s`;
+	if(reviewInterval.steps == 1) {
+		reviewIntervalText = `every ${reviewInterval.unit}`;
+	}
+	$.printf(`Reviewing projects ${reviewIntervalText} on ${daysOfWeeks[reviewDayOfWeek]}.\n`);
+	$.printf(`First review date: ${dateToStr(nextReviewDate)}\n`);
+	$.printf(`Reviews per week: ${numReviewProjectsPerWeek}${numReviewProjectsPerWeekLeftover > 0 ? ` or ${numReviewProjectsPerWeek + 1}` : ""}\n`);
+	// $.printf(`Leftover projects: ${numReviewProjectsPerWeekLeftover}\n`);
 
 	$.printf("\n");
+	$.printf(`Sorting projects by last review date.\n`);
+	$.printf("\n");
+
+	openProjects.sort(function(p1, p2) {
+		return p1.lastReviewDate() - p2.lastReviewDate();
+	});
 
 	var columns = [
 		ljust("#", projectIndexWidth),
@@ -160,6 +173,7 @@ function processDocument(document, shouldUpdate) {
 	var projectsOnDateAfter = {};
 
 	var numProjectsToProcess = 0;
+	nextReviewDate.setDate(nextReviewDate.getDate() - 7);
 	for(var i = 0; i < openProjects.length; i++) {
 		var project = openProjects[i];
 
@@ -178,7 +192,7 @@ function processDocument(document, shouldUpdate) {
 		countProjectsPerDay(projectsOnDateAfter, dateToStr(nextReviewDate));
 
 		var columns = [
-			ljust(i.toLocaleString(), projectIndexWidth),
+			ljust((i + 1).toLocaleString(), projectIndexWidth),
 			ljust(project.name(), maxProjectNameLen),
 			dateToStr(project.lastReviewDate()),
 			dateToStr(project.nextReviewDate()),
