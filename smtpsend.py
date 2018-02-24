@@ -45,6 +45,9 @@ def main(argv=None):
 		if opts.debug:
 			s.set_debuglevel(2)
 		s.connect(opts.smtp_server)
+		if opts.starttls:
+			# TODO Make sure that this will throw if the certificate is invalid.
+			s.starttls()
 		if username is not None:
 			s.login(username, password)
 		s.send_message(msg)
@@ -64,6 +67,7 @@ def _configure_logging(*, debug=False):
 def _parse_args(argv):
 	parser = argparse.ArgumentParser(prog=(argv[0] if argv is not None else None))
 	parser.add_argument("--debug", action="store_true", default=False)
+	parser.add_argument("--no-tls", dest="starttls", action="store_false", default=True)
 	parser.add_argument("--silent", action="store_true", default=False)
 	parser.add_argument("--smtp", dest="smtp_server", action="store", default="localhost")
 	parser.add_argument("--username", "-u", dest="username", action="store", default=None)
