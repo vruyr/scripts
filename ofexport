@@ -3,7 +3,12 @@
 ObjC.import("stdio");
 
 
-function main() {
+function main(...args) {
+	let prependCreationDate = false;
+	if(args.indexOf("--prepend-date") >= 0) {
+		prependCreationDate = true
+	}
+
 	var result = [];
 
 	var app = Application("OmniFocus");
@@ -17,6 +22,9 @@ function main() {
 		for(var ii = 0; ii < selectedTrees.length; ii++) {
 			var task = selectedTrees[ii].value();
 			result.push(taskToDirectiveText(task));
+			if(prependCreationDate) {
+				task.name = dateToStr(task.creationDate()) + " " + task.name();
+			}
 		}
 	}
 
@@ -135,4 +143,6 @@ function zpadStrInt(i, n) {
 	return "0".repeat(n - s.length) + s;
 }
 
-main();
+function run(args) {
+	main(...args);
+}
