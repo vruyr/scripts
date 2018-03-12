@@ -1,0 +1,101 @@
+#!/usr/bin/env osascript -l JavaScript
+
+ObjC.import("stdio");
+
+
+function main(...args) {
+	let copyToPasteboard = false;
+	if(args.indexOf("--copy") >= 0) {
+		copyToPasteboard = true
+	}
+
+	let app = Application("/Applications/Mail.app")
+
+	let result = "";
+
+	for(let mw of app.messageViewers()) {
+		for(let m of mw.selectedMessages()) {
+			let title = `-\t📫 ${parseAddress(m.sender())[0]} 🕐 ${dateToStr(m.dateSent())} 📝 ${m.subject().trim()}`;
+
+			let bodyLines = [];
+			bodyLines.push("message://" + encodeURI(`<${m.messageId()}>`));
+			bodyLines.push("Mailbox:\t\t" + mailboxToStr(m.mailbox()));
+			bodyLines.push("Date Sent:\t\t" + m.dateSent());
+			bodyLines.push("Date Received:\t" + m.dateReceived());
+			bodyLines.push(`From:\t\t${m.sender()}`);
+			for(let [kind, recipients] of [
+				["To:\t\t\t", m.toRecipients()],
+				["CC:\t\t\t", m.ccRecipients()],
+				["BCC:\t\t\t", m.bccRecipients()],
+			]) {
+				if(!recipients.length) {
+					continue;
+				}
+				recipients = recipients.map(r => r.name() ? `${r.name()} <${r.address()}>` : r.address());
+				bodyLines.push(`${kind}${recipients.join(", ")}`);
+			}
+			bodyLines.push(`Subject:\t\t${m.subject()}`);
+
+			result += `${title}\n\t${bodyLines.join("\n\t")}\n\n`;
+		}
+	}
+
+	$.printf("%s", result);
+
+	if(copyToPasteboard) {
+		app.includeStandardAdditions = true;
+		app.setTheClipboardTo(result);
+	}
+}
+
+
+function mailboxToStr(m) {
+	if(m.properties().container) {
+		return mailboxToStr(m.container()) + "/" + m.name();
+	} else {
+		return `[${m.name()}]`;
+	}
+}
+
+
+function parseAddress(a) {
+	let m = a.match(/^(.*)<([^>]+)>/);
+	if(!m) {
+		return [a, null];
+	} else {
+		return [m[1].trim(), m[2].trim()];
+	}
+}
+
+
+function dateToStr(d) {
+	var month = zpadStrInt(d.getMonth() + 1, 2);
+	var date = zpadStrInt(d.getDate(), 2);
+	var hours = zpadStrInt(d.getHours(), 2);
+	var minutes = zpadStrInt(d.getMinutes(), 2);
+	var seconds = zpadStrInt(d.getSeconds(), 2);
+	return `${d.getFullYear()}-${month}-${date} ${hours}:${minutes}:${seconds} ${tzStr(d)}`;
+}
+
+
+function tzStr(d) {
+	var x = d.getTimezoneOffset();
+	var totalMinutes = Math.abs(x);
+	var minutes = totalMinutes % 60;
+	var hours = (totalMinutes - minutes) / 60;
+	var absStr = `${zpadStrInt(hours, 2)}${zpadStrInt(minutes, 2)}`;
+	return (x > 0 ? "-" : "+") + absStr;
+}
+
+
+function zpadStrInt(i, n) {
+	var s = `${i}`;
+	if(n < s.length)
+		return s;
+	return "0".repeat(n - s.length) + s;
+}
+
+
+function run(args) {
+	main(...args);
+}

@@ -9,6 +9,11 @@ function main(...args) {
 		prependCreationDate = true
 	}
 
+	let copyToPasteboard = false;
+	if(args.indexOf("--copy") >= 0) {
+		copyToPasteboard = true
+	}
+
 	var result = [];
 
 	var app = Application("OmniFocus");
@@ -31,6 +36,11 @@ function main(...args) {
 	result = result.join("\n\n");
 
 	$.printf("%s", result);
+
+	if(copyToPasteboard) {
+		app.includeStandardAdditions = true;
+		app.setTheClipboardTo(result);
+	}
 
 	return; // Returned value will be printed on the console by osascript
 }
@@ -142,6 +152,7 @@ function zpadStrInt(i, n) {
 		return s;
 	return "0".repeat(n - s.length) + s;
 }
+
 
 function run(args) {
 	main(...args);
