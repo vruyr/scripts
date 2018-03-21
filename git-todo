@@ -2,6 +2,7 @@
 
 
 function main() {
+	local opt_show_colors=""
 	local opt_show_list=""
 	local opt_sort_key=2
 	declare -a args
@@ -20,6 +21,14 @@ function main() {
 			opt_sort_key="$1"
 			shift
 			;;
+		--colors)
+			shift
+			opt_show_colors="yes"
+			;;
+		--no-colors)
+			shift
+			opt_show_colors="no"
+			;;
 		--)
 			shift
 			break
@@ -37,6 +46,14 @@ function main() {
 	set -- "${args[@]}" "$@"
 	unset args
 
+	if [ -z "$opt_show_colors" ]; then
+		if git config --get-colorbool todo; then
+			opt_show_colors="yes"
+		else
+			opt_show_colors="no";
+		fi
+	fi
+
 	if [ $# -gt 2 ]; then
 		show_usage "$(basename "$0")"
 		return 1
@@ -45,7 +62,7 @@ function main() {
 	local tag_or_prefix="$1"
 	shift
 
-	if git config --get-colorbool todo; then
+	if [ "$opt_show_colors" == "yes" ]; then
 		local viewer=display_table
 		local style_loc='\x1b[34m'
 		local style_tag='\x1b[36m'
