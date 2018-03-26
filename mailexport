@@ -9,34 +9,58 @@ function main(...args) {
 		copyToPasteboard = true
 	}
 
+	let exportAttachments = false;
+	if(args.indexOf("--attachments") >= 0) {
+		exportAttachments = true;
+		$.printf("%s\n", "WARNING: Exporting mail attachments is not fully implemented yet.");
+	}
+
 	let app = Application("/Applications/Mail.app")
 
 	let result = "";
 
 	for(let mw of app.messageViewers()) {
 		for(let m of mw.selectedMessages()) {
-			let title = `-\t📫 ${parseAddress(m.sender())[0]} 🕐 ${dateToStr(m.dateSent())} 📝 ${m.subject().trim()}`;
-
-			let bodyLines = [];
-			bodyLines.push("message://" + encodeURI(`<${m.messageId()}>`));
-			bodyLines.push("Mailbox:\t\t" + mailboxToStr(m.mailbox()));
-			bodyLines.push("Date Sent:\t\t" + m.dateSent());
-			bodyLines.push("Date Received:\t" + m.dateReceived());
-			bodyLines.push(`From:\t\t${m.sender()}`);
-			for(let [kind, recipients] of [
-				["To:\t\t\t", m.toRecipients()],
-				["CC:\t\t\t", m.ccRecipients()],
-				["BCC:\t\t\t", m.bccRecipients()],
-			]) {
-				if(!recipients.length) {
-					continue;
+			if(exportAttachments) {
+				let rootFolderName = dateToShortStr(m.dateSent()) + " " + sanitizeForFilename(m.subject());
+				let rootFolderPath = "";
+				{
+					let currentApp = Application.currentApplication();
+					currentApp.includeStandardAdditions = true;
+					let destFolder = currentApp.chooseFolder({
+						withPropmpt: "Choose destination folder"
+					});
+					rootFolderPath = destFolder.toString() + "/" + rootFolderName;
 				}
-				recipients = recipients.map(r => r.name() ? `${r.name()} <${r.address()}>` : r.address());
-				bodyLines.push(`${kind}${recipients.join(", ")}`);
-			}
-			bodyLines.push(`Subject:\t\t${m.subject()}`);
+				result += rootFolderPath + "\n";
+				result += rootFolderPath + "/" + "email.eml" + "\n";
+				for(let a of m.mailAttachments()) {
+					result += rootFolderPath + "/" + "attachments" + "/" + a.name() + "\n";
+				}
+			} else {
+				let title = `-\t📫 ${parseAddress(m.sender())[0]} 🕐 ${dateToStr(m.dateSent())} 📝 ${m.subject().trim()}`;
 
-			result += `${title}\n\t${bodyLines.join("\n\t")}\n\n`;
+				let bodyLines = [];
+				bodyLines.push("message://" + encodeURI(`<${m.messageId()}>`));
+				bodyLines.push("Mailbox:\t\t" + mailboxToStr(m.mailbox()));
+				bodyLines.push("Date Sent:\t\t" + m.dateSent());
+				bodyLines.push("Date Received:\t" + m.dateReceived());
+				bodyLines.push(`From:\t\t${m.sender()}`);
+				for(let [kind, recipients] of [
+					["To:\t\t\t", m.toRecipients()],
+					["CC:\t\t\t", m.ccRecipients()],
+					["BCC:\t\t\t", m.bccRecipients()],
+				]) {
+					if(!recipients.length) {
+						continue;
+					}
+					recipients = recipients.map(r => r.name() ? `${r.name()} <${r.address()}>` : r.address());
+					bodyLines.push(`${kind}${recipients.join(", ")}`);
+				}
+				bodyLines.push(`Subject:\t\t${m.subject()}`);
+
+				result += `${title}\n\t${bodyLines.join("\n\t")}\n\n`;
+			}
 		}
 	}
 
@@ -46,6 +70,11 @@ function main(...args) {
 		app.includeStandardAdditions = true;
 		app.setTheClipboardTo(result);
 	}
+}
+
+
+function sanitizeForFilename(s) {
+	return s.replace(/[:/]/g, "_");
 }
 
 
@@ -75,6 +104,16 @@ function dateToStr(d) {
 	var minutes = zpadStrInt(d.getMinutes(), 2);
 	var seconds = zpadStrInt(d.getSeconds(), 2);
 	return `${d.getFullYear()}-${month}-${date} ${hours}:${minutes}:${seconds} ${tzStr(d)}`;
+}
+
+
+function dateToShortStr(d) {
+	var month = zpadStrInt(d.getMonth() + 1, 2);
+	var date = zpadStrInt(d.getDate(), 2);
+	var hours = zpadStrInt(d.getHours(), 2);
+	var minutes = zpadStrInt(d.getMinutes(), 2);
+	var seconds = zpadStrInt(d.getSeconds(), 2);
+	return `${d.getFullYear()}${month}${date}T${hours}${minutes}${seconds}${tzStr(d)}`;
 }
 
 
