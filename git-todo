@@ -82,7 +82,7 @@ function main() {
 	else
 		get_file_list "$@" | cat_lines | \
 			filter_todo_lines "$tag_or_prefix" "$style_loc" "$style_tag" "$style_txt" | \
-			sort -t $'\t' -k "$opt_sort_key" | \
+			sort --ignore-case -t $'\t' -k "$opt_sort_key" | \
 			$viewer
 	fi
 }
@@ -123,8 +123,9 @@ function filter_todo_lines() {
 		todo_tag="${todo_tag%:}"
 	done
 
-	local replacement="$style_loc"'\1'"$style_reset"'\t'"$style_tag"'\2'"$style_reset"'\t'"$style_txt"'\4'"$style_reset"
-	gsed -n 's/^\([^:]*:[0-9]\+\).*\?\(TODO'"$todo_tag""$rest_of_the_tag"'\)\([[:space:]]\+\(.*\)\)\?/'"$replacement"'/p'
+	local replacement="$style_loc"'\1'"$style_reset"'\t'"$style_tag"'\3'"$style_reset"'\t'"$style_txt"'\5'"$style_reset"
+	# \1 - location, \2 - begining of the line, \3 - TODO with tags, \4 - todo message with spaces, \5 - todo message without spaces
+	gsed -n 's/^\([^:]*:[0-9]\+\)\(.*\)\?\(TODO'"$todo_tag""$rest_of_the_tag"'\)\([[:space:]]\+\(.*\)\|$\)/'"$replacement"'/p'
 }
 
 
