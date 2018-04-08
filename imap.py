@@ -60,6 +60,10 @@ def main(opts):
 			for mailbox in mailboxes:
 				tags, sep, path = parse_imap_list_response_entry(decode_imap(mailbox))
 				print(" ".join(tags).ljust(10), sep.join(p for p in path))
+	elif opts.new_mailbox is not None:
+		new_mailbox = encode_imap(opts.new_mailbox)
+		new_mailbox = b'"' + new_mailbox + b'"' #TODO Why do we need to quotes here and what happens if the name already has a quote.
+		conn.create(new_mailbox)
 	else:
 		if opts.mailbox is None:
 			opts.mailbox = "INBOX"
@@ -194,6 +198,13 @@ def sysmain():
 	parser.add_argument(
 		"--mailbox", "-m",
 		dest="mailbox",
+		action="store",
+		metavar="MAILBOX",
+		default=None,
+	)
+	parser.add_argument(
+		"--new-mailbox", "-n",
+		dest="new_mailbox",
 		action="store",
 		metavar="MAILBOX",
 		default=None,
