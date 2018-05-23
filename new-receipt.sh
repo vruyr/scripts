@@ -13,11 +13,11 @@ file_path="${file_path}"
 echo $file_path
 
 cat >"$file_path" <<-EOT
-	Transaction Date:
-	Location:
-	Account:
-	Payee:
-	Amount:
+	Transaction Date: ?
+	Location: ?
+	Payee: ?
+	Amount: ?
+	Account: ?
 EOT
 
 
