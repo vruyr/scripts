@@ -16,8 +16,8 @@ cat >"$file_path" <<-EOT
 	Transaction Date: ?
 	Location: ?
 	Payee: ?
-	Amount: ?
 	Account: ?
+	Amount: ?
 EOT
 
 
