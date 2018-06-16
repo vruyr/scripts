@@ -13,7 +13,20 @@ function main() {
 	exec_indent brew cask outdated --verbose --greedy
 	echo --- Mac App Store
 	exec_indent softwareupdate --list
+	if [ -n "$PYV_ROOT_DIR" ]; then
+		echo --- pyv
+		exec_indent show_pyv_updates "$PYV_ROOT_DIR"
+	fi
 	echo ...
+}
+
+
+function show_pyv_updates() {
+	rootdir="$1"
+	for venv in $(compgen -A directory "$PYV_ROOT_DIR/"); do
+		echo "--- $venv"
+		exec_indent $venv/bin/pip list --outdated
+	done
 }
 
 
