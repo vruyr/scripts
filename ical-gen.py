@@ -28,6 +28,9 @@ import docopt
 import dateutil.parser
 
 
+# TODO Use https://openflights.org/data.html to give options of entering airport code instead of timezone.
+
+
 __prog__ = "ical-gen.py"
 __product__ = f"The {json.dumps(__prog__)} Script"
 __version__ = "0.0.0"
