@@ -3,14 +3,14 @@
 # Python Standard Library
 import sys; assert sys.version_info[:2] in [(3, 6)]
 import asyncio, subprocess, json, re, datetime
-# pip install tzwhere
-from tzwhere import tzwhere
-# pip install python-dateutil
+# pip install timezonefinder>=3.0.1
+import timezonefinder
+# pip install python-dateutil>=2.7.2
 import dateutil.tz
 
 
 async def main(*, args, prog, loop=None):
-	tzw = tzwhere.tzwhere()
+	tzfinder = timezonefinder.TimezoneFinder()
 
 	for photo_path in args:
 		p = await asyncio.create_subprocess_exec(
@@ -26,7 +26,7 @@ async def main(*, args, prog, loop=None):
 			latitude = entry["Composite:GPSLatitude"]
 			longitude = entry["Composite:GPSLongitude"]
 			m = re.match(r"(?P<year>\d{4}):(?P<month>\d{2}):(?P<day>\d{2}) (?P<hour>\d{2}):(?P<minute>\d{2}):(?P<second>\d{2})", entry["EXIF:DateTimeOriginal"])
-			tz = tzw.tzNameAt(latitude, longitude)
+			tz = tzfinder.timezone_at(lat=latitude, lng=longitude)
 			dt = datetime.datetime(
 				**dict((k, int(v)) for k, v in m.groupdict().items()),
 				tzinfo=dateutil.tz.gettz(tz),
