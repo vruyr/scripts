@@ -28,7 +28,7 @@ import docopt
 import dateutil.parser
 
 
-# TODO Use https://openflights.org/data.html to give options of entering airport code instead of timezone.
+# TODO Use https://openflights.org/data.html to give options of entering airport code instead of timezone. Also see if it has route info and if it is possible to generate the entire calendar event by just providing flight code and departure date.
 
 
 __prog__ = "ical-gen.py"
