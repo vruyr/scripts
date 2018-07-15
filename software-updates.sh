@@ -7,9 +7,11 @@ fi
 
 
 function main() {
-	echo --- Homebrew
+	echo --- Homebrew Update
+	exec_indent brew update
+	echo --- Homebrew Outdated
 	exec_indent brew outdated --verbose
-	echo --- Homebrew Cask
+	echo --- Homebrew Cask Outdated
 	exec_indent brew cask outdated --verbose --greedy
 	echo --- Mac App Store
 	exec_indent softwareupdate --list
