@@ -13,12 +13,12 @@ function main() {
 	exec_indent brew outdated --verbose
 	echo --- Homebrew Cask Outdated
 	exec_indent brew cask outdated --verbose --greedy
-	echo --- Mac App Store
-	exec_indent softwareupdate --list
 	if [ -n "$PYV_ROOT_DIR" ]; then
 		echo --- pyv
 		exec_indent show_pyv_updates "$PYV_ROOT_DIR"
 	fi
+	echo --- Mac App Store
+	exec_indent softwareupdate --list
 	echo ...
 }
 
