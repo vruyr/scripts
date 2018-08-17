@@ -8,17 +8,17 @@ fi
 
 function main() {
 	echo --- Homebrew Update
-	exec_indent brew update
+	eval_indent 'brew update'
 	echo --- Homebrew Outdated
-	exec_indent brew outdated --verbose
+	eval_indent 'brew outdated --verbose'
 	echo --- Homebrew Cask Outdated
-	exec_indent brew cask outdated --verbose --greedy
+	eval_indent 'brew cask outdated --verbose --greedy'
 	if [ -n "$PYV_ROOT_DIR" ]; then
 		echo --- pyv
-		exec_indent show_pyv_updates "$PYV_ROOT_DIR"
+		eval_indent 'show_pyv_updates "$PYV_ROOT_DIR"'
 	fi
 	echo --- Mac App Store
-	exec_indent softwareupdate --list
+	eval_indent 'softwareupdate --list'
 	echo ...
 }
 
@@ -27,13 +27,13 @@ function show_pyv_updates() {
 	rootdir="$1"
 	for venv in $(compgen -A directory "$PYV_ROOT_DIR/"); do
 		echo "--- $venv"
-		exec_indent $venv/bin/pip list --outdated
+		eval_indent '$venv/bin/pip list --outdated --format=json | jq -r '\''.[]|.name + "==" + .version + " < " + .latest_version'\'
 	done
 }
 
 
-function exec_indent() {
-	"$@" 2>&1 | sed 's/^/'$'\t''/'
+function eval_indent() {
+	eval "$@" 2>&1 | sed 's/^/'$'\t''/'
 }
 
 
