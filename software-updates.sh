@@ -7,17 +7,17 @@ fi
 
 
 function main() {
-	echo --- Homebrew Update
+	echo "--- Homebrew Update"
 	eval_indent 'brew update'
-	echo --- Homebrew Outdated
+	echo "--- Homebrew Outdated"
 	eval_indent 'brew outdated --verbose'
-	echo --- Homebrew Cask Outdated
+	echo "--- Homebrew Cask Outdated"
 	eval_indent 'brew cask outdated --verbose --greedy'
 	if [ -n "$PYV_ROOT_DIR" ]; then
-		echo --- pyv
+		echo "--- pyv: $PYV_ROOT_DIR"
 		eval_indent 'show_pyv_updates "$PYV_ROOT_DIR"'
 	fi
-	echo --- Mac App Store
+	echo "--- Mac App Store"
 	eval_indent 'softwareupdate --list'
 	echo ...
 }
@@ -25,9 +25,14 @@ function main() {
 
 function show_pyv_updates() {
 	rootdir="$1"
-	for venv in $(compgen -A directory "$PYV_ROOT_DIR/"); do
-		echo "--- $venv"
-		eval_indent '$venv/bin/pip list --outdated --format=json | jq -r '\''.[]|.name + "==" + .version + " < " + .latest_version'\'
+	local output=
+	for venv in $(compgen -A directory "$rootdir/"); do
+		output="$(eval_indent '$venv/bin/pip list --outdated --format=json | jq -r '\''.[]|.name + "==" + .version + " < " + .latest_version'\')"
+		if [ -z "$output" ]; then
+			continue
+		fi
+		echo "--- ${venv#$rootdir/}"
+		echo "$output"
 	done
 }
 
