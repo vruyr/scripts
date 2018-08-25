@@ -23,8 +23,8 @@ async def main(*, args, prog, loop=None):
 		for entry in raw_data:
 			if entry["SourceFile"] != photo_path:
 				continue
-			latitude = entry["Composite:GPSLatitude"]
-			longitude = entry["Composite:GPSLongitude"]
+			latitude = entry.get("Composite:GPSLatitude", 0)
+			longitude = entry.get("Composite:GPSLongitude", 0)
 			m = re.match(r"(?P<year>\d{4}):(?P<month>\d{2}):(?P<day>\d{2}) (?P<hour>\d{2}):(?P<minute>\d{2}):(?P<second>\d{2})", entry["EXIF:DateTimeOriginal"])
 			tz = tzfinder.timezone_at(lat=latitude, lng=longitude)
 			dt = datetime.datetime(
