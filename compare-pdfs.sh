@@ -5,6 +5,9 @@ MAGICK=magick
 MAGICK_DENSITY=300
 
 
+set -o errexit
+
+
 function main() {
 	local selfname=$(basename "$0")
 	if [ $# -ne 3 ]; then
@@ -40,19 +43,22 @@ function main() {
 		return 3
 	fi
 
+	local num_pages="${#one_pages[@]}"
+
 	declare -a diff_pages
 
-	printf >&2 "Comparing %s pages" "${#one_pages[@]}"
+	local msg='Compared %s of %s pages %s'
+	printf >&2 "$msg" 0 $num_pages $'\n'
 	local diff_page
-	for ((i=0; i<"${#one_pages[@]}"; i++)) do
+	for ((i=0; i < "$num_pages"; i++)) do
 		diff_page="$workdir/diff-$i.pdf"
-		printf >&2 "."
-		$MAGICK compare -density "$MAGICK_DENSITY" "${one_pages[$i]}" "${two_pages[$i]}" "$diff_page"
+		#TODO Find out why magick compare exits with non-zero exit code
+		$MAGICK compare -density "$MAGICK_DENSITY" "${one_pages[$i]}" "${two_pages[$i]}" "$diff_page" || true
 		diff_pages+=(
 			"$diff_page"
 		)
+		set_message 1 "$(printf "$msg" "$(( i + 1 ))" "$num_pages" "$(render_progress_bar $i "$num_pages" 27)")"
 	done
-	printf >&2 "\n"
 
 	printf >&2 "Writing %q\n" "$diff"
 	$MAGICK convert "${diff_pages[@]}" "$diff"
@@ -62,6 +68,56 @@ function main() {
 	printf >&2 "\n"
 }
 
+
+function set_message() {
+	local msg_num="$1"
+	local msg="$2"
+	if [[ ! "$msg_num" =~ ^[0-9]+$ ]]; then
+		printf '%q: First parameter must be an integer.\n' "set_message"
+		return 1
+	fi
+	printf '\e[%sF\e[2K' "$msg_num"
+	if [ -n "$msg" ]; then
+		printf '%s' "$msg"
+	fi
+	printf '\e[%sE' "$msg_num"
+}
+
+
+function render_progress_bar() {
+	local value="$1"
+	local total="$2"
+	local width="$3"
+	if [ $# -ne 3 ]; then
+		printf >&2 '%q: Expecting 3 parameters - value total width.\n' "render_progress_bar"
+		return 1
+	fi
+	if [[ ! "$value" =~ ^[0-9]+$ || ! "$total" =~ ^[0-9]+$ || ! "$width" =~ ^[0-9]+$ ]]; then
+		printf >&2 '%q: All parameters must be an integers.\n' "render_progress_bar"
+		return 1
+	fi
+
+	bp=$(( (value * 10000) / (total - 1) ))
+
+	frame_start='['
+	frame_end='] %3d%%'
+	frame_width=7
+
+	porgress_bar_char_filled='#'
+	porgress_bar_char_empty='-'
+	porgress_bar_width=$(( width - frame_width ))
+	porgress_bar_filled=$(( porgress_bar_width * bp / 10000 ))
+	porgress_bar_empty=$(( porgress_bar_width - porgress_bar_filled ))
+
+	printf "$frame_start"
+	for ((i=0; i < "$porgress_bar_filled"; i++)) do
+		printf '%s' "$porgress_bar_char_filled"
+	done
+	for ((i=0; i < "$porgress_bar_empty"; i++)) do
+		printf '%s' "$porgress_bar_char_empty"
+	done
+	printf "$frame_end" $(( bp / 100 ))
+}
 
 
 main "$@"
