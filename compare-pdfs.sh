@@ -57,11 +57,11 @@ function main() {
 		diff_pages+=(
 			"$diff_page"
 		)
-		set_message 1 "$(printf "$msg" "$(( i + 1 ))" "$num_pages" "$(render_progress_bar $i "$num_pages" 27)")"
+		set_message 1 "$(printf "$msg" "$(( i + 1 ))" "$num_pages" "$(render_progress_bar $(( i + 1 )) "$num_pages" 27)")"
 	done
 
 	printf >&2 "Writing %q\n" "$diff"
-	$MAGICK convert "${diff_pages[@]}" "$diff"
+	$MAGICK convert -density "$MAGICK_DENSITY" "${diff_pages[@]}" "$diff"
 
 	rm "${diff_pages[@]}"
 	printf "%s" "$diff"
@@ -97,7 +97,7 @@ function render_progress_bar() {
 		return 1
 	fi
 
-	bp=$(( (value * 10000) / (total - 1) ))
+	bp=$(( ( value * 10000 ) / total ))
 
 	frame_start='['
 	frame_end='] %3d%%'
