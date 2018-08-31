@@ -14,6 +14,11 @@ function main(...args) {
 		copyToPasteboard = true
 	}
 
+	let writeJson = false;
+	if(args.indexOf("--json") >= 0) {
+		writeJson = true
+	}
+
 	var result = [];
 
 	var app = Application("OmniFocus");
@@ -26,14 +31,20 @@ function main(...args) {
 		var selectedTrees = w.content().selectedTrees;
 		for(var ii = 0; ii < selectedTrees.length; ii++) {
 			var task = selectedTrees[ii].value();
-			result.push(taskToDirectiveText(task));
+			let taskStr;
+			if(writeJson) {
+				taskStr = taskToJsonString(task);
+			} else {
+				taskStr = taskToDirectiveText(task);
+			}
+			result.push(taskStr);
 			if(prependCreationDate) {
 				task.name = dateToStr(task.creationDate()) + " " + task.name();
 			}
 		}
 	}
 
-	result = result.join("\n\n");
+	result = result.join("\n") + "\n";
 
 	$.printf("%s", result);
 
@@ -43,6 +54,23 @@ function main(...args) {
 	}
 
 	return; // Returned value will be printed on the console by osascript
+}
+
+
+function taskToJsonString(task) {
+	let result = {
+		id: task.id(),
+		name: task.name(),
+		note: task.note(), //TODO Figure out a way to get the raw rtf with attachments.
+		created: dateToStr(task.creationDate()),
+		modified: dateToStr(task.modificationDate()),
+		deferDate: dateToStr(task.deferDate()),
+		dueDate: dateToStr(task.dueDate()),
+		completionDate: dateToStr(task.completionDate()),
+		completed: task.completed(),
+		estimatedMinutes: task.estimatedMinutes(),
+	};
+	return JSON.stringify(result, null, "\t");
 }
 
 
@@ -117,6 +145,9 @@ function taskToSectionText(task) {
 
 
 function dateToStr(d) {
+	if(d == null) {
+		return null;
+	}
 	var month = zpadStrInt(d.getMonth() + 1, 2);
 	var date = zpadStrInt(d.getDate(), 2);
 	var hours = zpadStrInt(d.getHours(), 2);
