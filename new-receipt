@@ -1,24 +1,88 @@
-#!/usr/bin/env bash
+#!/Users/vruyr/.bin/pyvenv/kludge37/bin/python
+#!/usr/bin/env python3
 
-file_dir="$HOME/Downloads"
-file_base_name="receipt"
-file_path="${file_dir}/${file_base_name}.txt"
-declare -i counter=0
-while [ -e "${file_path}" ]; do
-	counter=$(( counter + 1 ))
-	file_path="${file_dir}/${file_base_name}-${counter}.txt"
-done
-
-file_path="${file_path}"
-echo $file_path
-
-cat >"$file_path" <<-EOT
-	Transaction Date: ?
-	Location: ?
-	Payee: ?
-	Account: ?
-	Amount: ?
-EOT
+import sys; assert sys.version_info[:2] in [(3, 7)]
+import asyncio, pathlib, subprocess, os
+import dateutil.parser # python-dateutil==2.7.3
 
 
-$(git var GIT_EDITOR) "$file_path"
+async def main(*, args=None, prog=None, loop=None):
+	file_dir = pathlib.Path.home() / "Downloads"
+	file_base_name = "receipt"
+	counter = 0
+	file_path = file_dir / f"{file_base_name}.txt"
+	while file_path.exists():
+		counter += 1
+		file_path = file_dir / f"{file_base_name}-{counter}.txt"
+	print(file_path)
+	fields = [
+		"Transaction Date",
+		"Location",
+		"Payee",
+		"Account",
+		"Amount",
+	]
+	if file_path.exists():
+		raise RuntimeError(f"already exists: {file_path}")
+	with open(file_path, "w") as fo:
+		fo.write("\n".join(f"{field}: ?" for field in fields) + "\n")
+	editor_cmd = await get_editor_cmd(loop)
+	p = await asyncio.create_subprocess_shell(f"{editor_cmd} {file_path}")
+	await p.communicate()
+	with open(file_path, "r") as fo:
+		for line in fo:
+			name, sep, value = line.partition(":")
+			if sep != ":":
+				continue
+			if name == "Transaction Date":
+				date = dateutil.parser.parse(value)
+			elif name == "Payee":
+				payee = value.strip()
+			elif name == "Account":
+				account = value.strip()
+			elif name == "Amount":
+				amount = value.strip()
+
+	new_file_name = "{date:%Y-%m-%d} {account} {amount} {payee}.txt".format(
+		date=date,
+		account=account,
+		amount=amount,
+		payee=payee
+	)
+	new_file_path = file_path.parent / new_file_name
+	if new_file_path.exists():
+		raise RuntimeError(f"already exists: {new_file_path}")
+	print(f"{file_path} -> {new_file_path}")
+	os.rename(file_path, new_file_path)
+
+
+async def get_editor_cmd(loop):
+	p = await asyncio.create_subprocess_exec(
+		"git", "var", "GIT_EDITOR",
+		stdout=subprocess.PIPE,
+		loop=loop
+	)
+	stdout_data, stderr_data = await p.communicate()
+	if stderr_data:
+		raise RuntimeError(stderr_data)
+	return stdout_data.decode().strip()
+
+
+def _smain(*, args=None, prog=None):
+	if sys.platform == "win32":
+		loop = asyncio.ProactorEventLoop()
+		asyncio.set_event_loop(loop)
+	else:
+		loop = asyncio.get_event_loop()
+	return loop.run_until_complete(main(args=args, prog=prog, loop=loop))
+
+
+def _ssmain():
+	try:
+		sys.exit(_smain(args=sys.argv[1:], prog=sys.argv[0]))
+	except KeyboardInterrupt:
+		sys.stderr.write("\n")
+
+
+if __name__ == "__main__":
+	_ssmain()
