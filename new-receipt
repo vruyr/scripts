@@ -7,53 +7,59 @@ import dateutil.parser # python-dateutil==2.7.3
 
 
 async def main(*, args=None, prog=None, loop=None):
-	file_dir = pathlib.Path.home() / "Downloads"
-	file_base_name = "receipt"
-	counter = 0
-	file_path = file_dir / f"{file_base_name}.txt"
-	while file_path.exists():
-		counter += 1
-		file_path = file_dir / f"{file_base_name}-{counter}.txt"
-	print(file_path)
-	fields = [
-		"Transaction Date",
-		"Location",
-		"Payee",
-		"Account",
-		"Amount",
-	]
-	if file_path.exists():
-		raise RuntimeError(f"already exists: {file_path}")
-	with open(file_path, "w") as fo:
-		fo.write("\n".join(f"{field}: ?" for field in fields) + "\n")
-	editor_cmd = await get_editor_cmd(loop)
-	p = await asyncio.create_subprocess_shell(f"{editor_cmd} {file_path}")
-	await p.communicate()
-	with open(file_path, "r") as fo:
-		for line in fo:
-			name, sep, value = line.partition(":")
-			if sep != ":":
-				continue
-			if name == "Transaction Date":
-				date = dateutil.parser.parse(value)
-			elif name == "Payee":
-				payee = value.strip()
-			elif name == "Account":
-				account = value.strip()
-			elif name == "Amount":
-				amount = value.strip()
+	receipt_files = [pathlib.Path(p) for p in args]
 
-	new_file_name = "{date:%Y-%m-%d} {account} {amount} {payee}.txt".format(
-		date=date,
-		account=account,
-		amount=amount,
-		payee=payee
-	)
-	new_file_path = file_path.parent / new_file_name
-	if new_file_path.exists():
-		raise RuntimeError(f"already exists: {new_file_path}")
-	print(f"{file_path} -> {new_file_path}")
-	os.rename(file_path, new_file_path)
+	if not receipt_files:
+		file_dir = pathlib.Path.home() / "Downloads"
+		file_base_name = "receipt"
+		counter = 0
+		file_path = file_dir / f"{file_base_name}.txt"
+		while file_path.exists():
+			counter += 1
+			file_path = file_dir / f"{file_base_name}-{counter}.txt"
+		print(file_path)
+		fields = [
+			"Transaction Date",
+			"Location",
+			"Payee",
+			"Account",
+			"Amount",
+		]
+		if file_path.exists():
+			raise RuntimeError(f"already exists: {file_path}")
+		with open(file_path, "w") as fo:
+			fo.write("\n".join(f"{field}: ?" for field in fields) + "\n")
+		editor_cmd = await get_editor_cmd(loop)
+		p = await asyncio.create_subprocess_shell(f"{editor_cmd} {file_path}")
+		await p.communicate()
+		receipt_files.append(file_path)
+
+	for file_path in receipt_files:
+		with open(file_path, "r") as fo:
+			for line in fo:
+				name, sep, value = line.partition(":")
+				if sep != ":":
+					continue
+				if name == "Transaction Date":
+					date = dateutil.parser.parse(value)
+				elif name == "Payee":
+					payee = value.strip()
+				elif name == "Account":
+					account = value.strip()
+				elif name == "Amount":
+					amount = value.strip()
+
+		new_file_name = "{date:%Y-%m-%d} {account} {amount} {payee}.txt".format(
+			date=date,
+			account=account,
+			amount=amount,
+			payee=payee
+		)
+		new_file_path = file_path.parent / new_file_name
+		if new_file_path.exists():
+			raise RuntimeError(f"already exists: {new_file_path}")
+		print(f"{file_path} -> {new_file_path}")
+		os.rename(file_path, new_file_path)
 
 
 async def get_editor_cmd(loop):
