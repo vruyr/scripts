@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
-assert sys.version_info[:2] in [(3, 6)]
+assert sys.version_info[:2] in [(3, 6), (3, 7)]
 import imaplib, getpass, hmac, email, shlex, subprocess, re, pathlib, json
 
 
@@ -43,23 +43,7 @@ def main(opts):
 		return
 
 	if opts.list_mailboxes:
-		# https://www.imapwiki.org/ClientImplementation/MailboxList
-		status, mailboxes = conn.list("\"\"", "*")
-		assert status == "OK"
-		if opts.show_in_json:
-			result = []
-			for mailbox in mailboxes:
-				tags, sep, path = parse_imap_list_response_entry(decode_imap(mailbox))
-				result.append({
-					"tags": list(tags),
-					"path": list(p for p in path),
-				})
-			json.dump(result, sys.stdout, indent=4)
-			sys.stdout.write("\n")
-		else:
-			for mailbox in mailboxes:
-				tags, sep, path = parse_imap_list_response_entry(decode_imap(mailbox))
-				print(" ".join(tags).ljust(10), sep.join(p for p in path))
+		list_mailboxes(conn=conn, show_in_json=opts.show_in_json)
 	elif opts.new_mailbox is not None:
 		new_mailbox = encode_imap(opts.new_mailbox)
 		new_mailbox = b'"' + new_mailbox + b'"' #TODO Why do we need to quotes here and what happens if the name already has a quote.
@@ -69,7 +53,11 @@ def main(opts):
 			opts.mailbox = "INBOX"
 
 	if opts.mailbox is not None:
-		mailbox = encode_imap(opts.mailbox)
+		list_mailbox_content(conn=conn, mailbox=opts.mailbox)
+
+
+def list_mailbox_content(*, conn, mailbox):
+		mailbox = encode_imap(mailbox)
 		mailbox = b'"' + mailbox + b'"' #TODO Why do we need to quotes here and what happens if the name already has a quote.
 		response_type, response_data = conn.select(mailbox, readonly=True)
 		if response_type != "OK":
@@ -101,6 +89,26 @@ def main(opts):
 				),
 				end="\n\n"
 			)
+
+
+def list_mailboxes(*, conn, show_in_json):
+	# https://www.imapwiki.org/ClientImplementation/MailboxList
+	status, mailboxes = conn.list("\"\"", "*")
+	assert status == "OK"
+	if show_in_json:
+		result = []
+		for mailbox in mailboxes:
+			tags, sep, path = parse_imap_list_response_entry(decode_imap(mailbox))
+			result.append({
+				"tags": list(tags),
+				"path": list(p for p in path),
+			})
+		json.dump(result, sys.stdout, indent=4)
+		sys.stdout.write("\n")
+	else:
+		for mailbox in mailboxes:
+			tags, sep, path = parse_imap_list_response_entry(decode_imap(mailbox))
+			print(" ".join(tags).ljust(10), sep.join(p for p in path))
 
 
 def decode_imap(x):
