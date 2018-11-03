@@ -4,20 +4,11 @@ ObjC.import("stdio");
 
 
 function main(...args) {
-	let prependCreationDate = false;
-	if(args.indexOf("--prepend-date") >= 0) {
-		prependCreationDate = true
-	}
-
-	let copyToPasteboard = false;
-	if(args.indexOf("--copy") >= 0) {
-		copyToPasteboard = true
-	}
-
-	let writeJson = false;
-	if(args.indexOf("--json") >= 0) {
-		writeJson = true
-	}
+	let params = parseArgs(args, {
+		"--prepend-date": parseArgs.flag("prependCreationDate"),
+		"--copy"        : parseArgs.flag("copyToPasteboard"),
+		"--json"        : parseArgs.flag("writeJson"),
+	});
 
 	var result = [];
 
@@ -32,13 +23,13 @@ function main(...args) {
 		for(var ii = 0; ii < selectedTrees.length; ii++) {
 			var task = selectedTrees[ii].value();
 			let taskStr;
-			if(writeJson) {
+			if(params.writeJson) {
 				taskStr = taskToJsonString(task);
 			} else {
 				taskStr = taskToDirectiveText(task);
 			}
 			result.push(taskStr);
-			if(prependCreationDate) {
+			if(params.prependCreationDate) {
 				task.name = dateToStr(task.creationDate()) + " " + task.name();
 			}
 		}
@@ -48,12 +39,48 @@ function main(...args) {
 
 	$.printf("%s", result);
 
-	if(copyToPasteboard) {
+	if(params.copyToPasteboard) {
 		app.includeStandardAdditions = true;
 		app.setTheClipboardTo(result);
 	}
 
 	return; // Returned value will be printed on the console by osascript
+}
+
+
+function parseArgs(args, parsers) {
+	let params = {};
+
+	function split(arg) {
+		let sep = arg.indexOf("=");
+		if(sep < 0) {
+			return [arg, null];
+		} else {
+			return [arg.substr(0, sep), arg.substr(sep + 1)]
+		}
+	}
+
+	for(let arg of args) {
+		let [name, value] = split(arg);
+		if(!parsers.hasOwnProperty(name)) {
+			throw new Error(`Invalid argument ${JSON.stringify(arg)}`);
+		}
+		Object.assign(params, parsers[name](name, value, args));
+	}
+
+	return params;
+}
+
+
+parseArgs.flag = function(paramName) {
+	return function(name, value, args) {
+		if(value != null) {
+			throw new Error(`The ${name} parameter does not accept a value`);
+		}
+		return {
+			[paramName]: true,
+		};
+	}
 }
 
 
