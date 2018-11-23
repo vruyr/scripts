@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Python Standard Library
-import sys; assert sys.version_info[:2] in [(3, 6)]
+import sys; assert sys.version_info[:2] in [(3, 7)]
 import asyncio, subprocess, os, pathlib, shlex
 
 
@@ -53,7 +53,7 @@ async def main(*, args, prog, loop=None):
 			trashed_file_names = trashed_file_names[num_tasks_needed:]
 		dummy_done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
 
-	assert num_trashed_files == len(trashed_files)
+	assert num_trashed_files == len(trashed_files), (num_trashed_files, trashed_files)
 
 	num_committed_files = 0
 	not_committed_files = []
