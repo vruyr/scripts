@@ -2,7 +2,7 @@
 # Python Standard Library
 import sys; assert sys.version_info[:2] in [(3, 6)]
 import asyncio, os, shutil, itertools, plistlib, json
-# https://github.com/xattr/xattr
+# pip install xattr
 import xattr
 
 

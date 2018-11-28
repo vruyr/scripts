@@ -14,7 +14,9 @@ Date/Time Conversion:
 """
 
 import sys, datetime
+# pip install python-dateutul
 import dateutil.parser
+# pip install docopt
 import docopt
 
 

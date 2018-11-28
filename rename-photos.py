@@ -15,11 +15,11 @@ Dependencies:
 # Python Standard Library
 import sys, argparse, subprocess, json, collections, re, datetime, decimal, os, pathlib, shlex
 import threading, itertools, time
-# https://pypi.python.org/pypi/docopt
+# pip install 'docopt>=0.6.2,<0.7.0'
 import docopt
-# https://pypi.python.org/pypi/pytz
+# pip install pytz
 import pytz
-# https://pypi.python.org/pypi/tzwhere
+# pip install tzwhere
 import tzwhere.tzwhere
 
 

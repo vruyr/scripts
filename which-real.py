@@ -1,3 +1,4 @@
+#!/Users/vruyr/.bin/pyvenv/kludge-cpython-3.7.1/bin/python
 #!/usr/bin/env python3
 
 
@@ -8,7 +9,7 @@ Usage:
 
 
 import sys, shutil, os, pathlib
-# docopt >=0.6.2, <0.7.0
+# pip install 'docopt>=0.6.2,<0.7.0'
 import docopt
 
 

@@ -3,9 +3,9 @@
 # Python Standard Library
 import sys; assert sys.version_info[:2] in [(3, 6)]
 import asyncio, subprocess, json, re, datetime
-# pip install timezonefinder>=3.0.1
+# pip install 'timezonefinder>=3.0.1'
 import timezonefinder
-# pip install python-dateutil>=2.7.2
+# pip install 'python-dateutil>=2.7.2'
 import dateutil.tz
 
 
