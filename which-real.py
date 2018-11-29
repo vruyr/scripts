@@ -1,4 +1,3 @@
-#!/Users/vruyr/.bin/pyvenv/kludge-cpython-3.7.1/bin/python
 #!/usr/bin/env python3
 
 

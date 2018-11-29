@@ -1,4 +1,3 @@
-#!/Users/vruyr/.bin/pyvenv/kludge37/bin/python
 #!/usr/bin/env python3
 
 import sys; assert sys.version_info[:2] in [(3, 7)]
