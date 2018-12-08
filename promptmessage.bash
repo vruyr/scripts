@@ -28,7 +28,7 @@ function promptmessage_remove() {
 
 function promptmessage_set() {
 	_promptmessage_texts["$1"]="$2"
-	_promptmessage_texts["$1"]="$3"
+	_promptmessage_styles["$1"]="$3"
 }
 
 
