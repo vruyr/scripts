@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
+
 """
 Usage:
-	git-cred.py URL
+	{prog} URL
 """
 
 import sys, asyncio, subprocess, os
@@ -9,8 +10,14 @@ import sys, asyncio, subprocess, os
 import docopt
 
 
-async def main(*, args, prog):
-	params = docopt.docopt(__doc__, argv=args, help=True, version=True, options_first=False)
+async def amain(*, args, prog):
+	params = docopt.docopt(
+		__doc__.replace("\t", " " * 4).format(prog=os.path.basename(prog)),
+		argv=args,
+		help=True,
+		version=True,
+		options_first=False
+	)
 	url = params.pop("URL")
 	assert not params, params
 
@@ -88,14 +95,21 @@ async def printer(*, queue, fo):
 			print(item, file=fo)
 
 
-def smain():
+def main(argv=None):
+	if argv is None:
+		argv = sys.argv
+
 	try:
 		if sys.platform == "win32":
 			asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-		return asyncio.run(main(args=sys.argv[1:], prog=sys.argv[0]))
+
+		return asyncio.run(amain(
+			args=argv[1:],
+			prog=argv[0]
+		))
 	except KeyboardInterrupt:
 		print(file=sys.stderr)
 
 
 if __name__ == "__main__":
-	sys.exit(smain())
+	sys.exit(main())
