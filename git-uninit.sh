@@ -75,17 +75,17 @@ function main() {
 	# "# pack-refs with: peeled fully-peeled sorted"
 	rm_if_sha1_matches b87768695bbfa0ff94952151224ddeb01ed48767 "$gitdir/packed-refs"
 
-	rmdir_if_exists "$gitdir/refs/heads"
-	rmdir_if_exists "$gitdir/refs/tags"
-	rmdir_if_exists "$gitdir/refs/remotes"
+	rmdir_empty_recursively "$gitdir/refs/"
 	rmdir_if_exists "$gitdir/refs/"
-	rmdir_if_exists "$gitdir/logs/refs/heads"
-	rmdir_if_exists "$gitdir/logs/refs"
+
+	rmdir_empty_recursively "$gitdir/logs/"
 	rmdir_if_exists "$gitdir/logs/"
+
 	rmdir_if_exists "$gitdir/info/"
 	rmdir_if_exists "$gitdir/hooks/"
-	rmdir_if_exists "$gitdir/objects/info"
-	rmdir_if_exists "$gitdir/objects/pack"
+
+	rmdir_if_exists "$gitdir/objects/info/"
+	rmdir_if_exists "$gitdir/objects/pack/"
 	rmdir_if_exists "$gitdir/objects/"
 
 
@@ -159,6 +159,25 @@ function rm_if_exists() {
 	if [ -f "$filepath" ]; then
 		rm -f "$filepath" || :
 	fi
+}
+
+
+function rmdir_empty_recursively() {
+	local dirpath="$1"
+	if [ ! -d "$dirpath" ]; then
+		return
+	fi
+	local IFS=$'\n'
+	while true; do
+		local empty_dirs=(
+			$(find "$dirpath" -depth -mindepth 1 -type d -empty)
+		)
+		if [ "${#empty_dirs[@]}" -gt 0 ]; then
+			rmdir "${empty_dirs[@]}"
+		else
+			break
+		fi
+	done
 }
 
 
