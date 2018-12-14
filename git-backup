@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+
+
+set -o errexit
+
+
+index_file_for_worktree=
+trap cleanup EXIT
+function cleanup() {
+	if [ -n "$index_file_for_worktree" -a -e "$index_file_for_worktree" ]; then
+		rm "$index_file_for_worktree"
+	fi
+}
+
+
+if [ $# -eq 0 -o $# -eq 1 -a \( "$1" == "--create" -o "$1" == "-c" \) ]; then
+	now=$(date +"%s%z")
+	export GIT_AUTHOR_DATE="$now"
+	export GIT_COMMITTER_DATE="$now"
+
+	index_file_for_worktree=$(mktemp -t temp-git-index)
+	rm "$index_file_for_worktree" # git chokes on an index file of zero length
+	GIT_INDEX_FILE="$index_file_for_worktree" git add -A
+	tree_id_worktree=$(GIT_INDEX_FILE="$index_file_for_worktree" git write-tree)
+	echo "Created a tree object for worktree  : $tree_id_worktree"
+
+	commit_id_worktree="$(git commit-tree -p HEAD -m "BACKUP of worktree as of $(date -r "${now%-*}" +"%F %T %z")" "$tree_id_worktree" )"
+	echo "Created a commit object for worktree: $commit_id_worktree"
+
+	tag_name_worktree="backups/$now/worktree"
+	git tag "$tag_name_worktree" "$commit_id_worktree"
+	echo "Created a tag for worktree          : $tag_name_worktree"
+
+	index_file_blob_id="$(git hash-object -t blob -w "$(git rev-parse --git-path index)")"
+	echo "Created a blob object for index file: $index_file_blob_id"
+
+	tag_name_index_file_blob="backups/$now/index"
+	git tag "$tag_name_index_file_blob" "$index_file_blob_id"
+	echo "Created a tag for blob of index file: $tag_name_index_file_blob"
+
+	echo ""
+	"$0" --list
+elif [ $# -eq 1 -a \( "$1" == "-l" -o "$1" == "--list" \) ]; then
+	{
+		lfmt='%s\t%s\t%s\t%s\t%s\n'
+		printf "$lfmt" "backup name" "backup date" "worktree comit" "worktree tree" "index blob"
+		for backup_name in $(git for-each-ref 'refs/tags/backups/*/worktree' --format "%(refname)"); do
+			backup_name=${backup_name#refs/tags/backups/}
+			backup_name=${backup_name%/worktree}
+			test $(git cat-file -t "refs/tags/backups/${backup_name}/worktree") == commit
+			test $(git cat-file -t "refs/tags/backups/${backup_name}/index") == blob
+			fields=(
+				"$backup_name"
+				"$(date -r "${backup_name%-*}" +"%F %T")"
+				"$(git rev-parse "refs/tags/backups/${backup_name}/worktree")"
+				"$(git rev-parse "refs/tags/backups/${backup_name}/worktree:")"
+				"$(git rev-parse "refs/tags/backups/${backup_name}/index")"
+			)
+			printf "$lfmt" "${fields[@]}"
+		done
+	} | column -t -s $'\t'
+elif [ $# -eq 3 -a "$1" == "--restore" ]; then
+	backup_name="$2"
+	new_worktree_path="$3"
+	git worktree add  "$new_worktree_path" --detach "backups/$backup_name/worktree"
+	git -C "$new_worktree_path" reset --soft @~
+	git cat-file blob "backups/$backup_name/index" >"$(git -C "$new_worktree_path" rev-parse --git-path index)"
+elif [ $# -eq 2 -a \( "$1" == "--delete" -o "$1" == "-d" \) ]; then
+	backup_name="$2"
+	git tag -d "backups/$backup_name/worktree"
+	git tag -d "backups/$backup_name/index"
+else
+	echo "unrecognized parameters"
+fi
