@@ -38,6 +38,7 @@ function main() {
 	# Unimporant files
 	rm_if_exists "$gitdir/COMMIT_EDITMSG"
 	rm_if_exists "$gitdir/FETCH_HEAD"
+	rm_if_exists "$gitdir/ORIG_HEAD"
 
 	# "ref: refs/heads/master"
 	rm_if_sha1_matches acbaef275e46a7f14c1ef456fff2c8bbe8c84724 "$gitdir/HEAD"
