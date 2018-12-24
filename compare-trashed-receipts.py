@@ -11,6 +11,8 @@ async def main(*, args, prog, loop=None):
 	trash_dirs = [
 		home_dir / ".Trash",
 		home_dir / "Library/Mobile Documents/com~apple~CloudDocs/.Trash",
+		home_dir / "Library/Mobile Documents/iCloud~is~workflow~my~workflows/Documents/.Trash/",
+		home_dir / "Documents/ScanSnap/.Trash",
 	]
 	ignored_file_names = (
 		".DS_Store",
@@ -29,10 +31,12 @@ async def main(*, args, prog, loop=None):
 
 	trashed_file_names = []
 	for trash_dir in trash_dirs:
-		for fn in os.listdir(trash_dir):
-			if fn in ignored_file_names:
-				continue
-			trashed_file_names.append(os.fspath(trash_dir / fn))
+		pending_dirs = [trash_dir]
+		for root, dirs, files in os.walk(pending_dirs.pop(0), topdown=True):
+			for file in files:
+				if file in ignored_file_names:
+					continue
+				trashed_file_names.append(os.path.join(root, file))
 
 	num_trashed_files = len(trashed_file_names)
 
