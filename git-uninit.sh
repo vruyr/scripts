@@ -6,7 +6,8 @@ set -o errexit
 
 function main() {
 	gitdir="$(git rev-parse --git-dir)"
-	if [ "$gitdir" != "." -a "$gitdir" != ".git" ]; then
+	worktree="$(git rev-parse --show-toplevel)"
+	if [ -z "$gitdir" -o ! -d "$gitdir" -o -z "$worktree" -o "$PWD" != "$worktree" ]; then
 		echo 'FATAL: Please `cd` to the repo root folder first (detected git-dir: '"$gitdir"').'
 		exit 1
 	fi
