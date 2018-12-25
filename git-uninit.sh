@@ -6,20 +6,47 @@ set -o errexit
 
 function main() {
 	gitdir="$(git rev-parse --git-dir)"
-	worktree="$(git rev-parse --show-toplevel)"
-	if [ -z "$gitdir" -o ! -d "$gitdir" -o -z "$worktree" -o "$PWD" != "$worktree" ]; then
-		echo 'FATAL: Please `cd` to the repo root folder first (detected git-dir: '"$gitdir"').'
+	if [ -z "$gitdir" -o ! -d "$gitdir" ]; then
+		echo 'FATAL: Failed to determine gitdir path.'
 		exit 1
 	fi
 
-
 	if [ "$(git config --get core.bare)" == "true" ]; then
 		check_refs
+
+		if [ "$(cat "$gitdir/HEAD")" != "ref: refs/heads/master" ]; then
+			echo 'FATAL: A bare repo with head not pointing to master is not supported'
+			exit 1
+		fi
+
+		if [ "$gitdir" != "." ]; then
+			echo 'FATAL: Please `cd` to the root of the repo (detected git-dir: '"$gitdir"').'
+			exit 1
+		fi
 	else
+		worktree="$(git rev-parse --show-toplevel)"
+		if [ -z "$worktree" -o ! -d "$worktree" ]; then
+			echo 'FATAL: Failed to determine worktree path.'
+			exit 1
+		fi
+
+		if [ "$PWD" != "$worktree" ]; then
+			echo 'FATAL: Please `cd` to the repo root folder first (detected worktree: '"$worktree"').'
+			exit 1
+		fi
+
 		if [ -n "$(git status --porcelain=v2)" ]; then
 			echo "FATAL: the worktree is not clean"
 			exit 1
 		fi
+
+		if [ -n "$(git submodule foreach --recursive)" ]; then
+			echo "FATAL: the worktree contains initialized submodules"
+			exit 1
+		fi
+
+		#TODO Implement graceful deinit of submodules and recursive git-uninit.sh of "$gitdir/modules/*"
+
 		check_refs
 		empty_commit="$(create_empty_commit)"
 		git checkout --quiet "$empty_commit"
