@@ -159,10 +159,7 @@ function create_empty_commit() {
 
 function check_refs() {
 	all_refs="$(git for-each-ref --format="%(refname)")"
-	HEAD_ref="$(git rev-parse --symbolic-full-name HEAD)"
 	if [ -n "$all_refs" ]; then
-		# "$HEAD_ref" != "refs/heads/master"
-		# echo "FATAL: Before proceeding please make sure HEAD is a symbolic ref to refs/heads/master"
 		echo "FATAL: Before proceeding please make sure all references are deleted"
 		return 1
 	fi
