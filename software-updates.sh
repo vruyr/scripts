@@ -7,18 +7,75 @@ fi
 
 
 function main() {
-	echo "--- Homebrew Update"
-	eval_indent 'brew update'
-	echo "--- Homebrew Outdated"
-	eval_indent 'brew outdated --verbose'
-	echo "--- Homebrew Cask Outdated"
-	eval_indent 'brew cask outdated --verbose --greedy'
-	if [ -n "$PYV_ROOT_DIR" ]; then
-		echo "--- pyv: $PYV_ROOT_DIR"
-		eval_indent 'show_pyv_updates "$PYV_ROOT_DIR"'
+	if [ $# -eq 0 ]; then
+		set -- --all
 	fi
-	echo "--- Mac App Store"
-	eval_indent 'softwareupdate --list'
+
+	local homebrew_outdated=
+	local homebrew_cask_outdated=
+	local pyv_outdated=
+	local macappstore_outdated=
+
+	while [ $# -gt 0 ]; do
+		local opt="$1"
+		shift
+		case "$opt" in
+			"--all")
+				set -- --brew --brew-cask --pyv --macappstore "$@"
+				;;
+			"--brew")
+				homebrew_outdated=1
+				;;
+			"--no-brew")
+				homebrew_outdated=
+				;;
+			"--brew-cask")
+				homebrew_cask_outdated=1
+				;;
+			"--no-brew-cask")
+				homebrew_cask_outdated=
+				;;
+			"--pyv")
+				pyv_outdated=1
+				;;
+			"--no-pyv")
+				pyv_outdated=
+				;;
+			"--macappstore"|"--appstore")
+				macappstore_outdated=1
+				;;
+			"--no-macappstore"|"--no-appstore")
+				macappstore_outdated=
+				;;
+			*)
+				echo "invalid parameter: $opt"
+				return 1
+				;;
+		esac
+	done
+
+	if [ "$homebrew_outdated" -o "$homebrew_cask_outdated" ]; then
+		echo "--- Homebrew Update"
+		eval_indent 'brew update'
+	fi
+	if [ "$homebrew_outdated" ]; then
+		echo "--- Homebrew Outdated"
+		eval_indent 'brew outdated --verbose'
+	fi
+	if [ "$homebrew_cask_outdated" ]; then
+		echo "--- Homebrew Cask Outdated"
+		eval_indent 'brew cask outdated --verbose --greedy'
+	fi
+	if [ "$pyv_outdated" ]; then
+		if [ -n "$PYV_ROOT_DIR" ]; then
+			echo "--- pyv: $PYV_ROOT_DIR"
+			eval_indent 'show_pyv_updates "$PYV_ROOT_DIR"'
+		fi
+	fi
+	if [ "$macappstore_outdated" ]; then
+		echo "--- Mac App Store"
+		eval_indent 'softwareupdate --list'
+	fi
 	echo ...
 }
 
