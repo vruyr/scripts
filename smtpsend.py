@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from __future__ import print_function
-import sys; assert sys.version_info[:2] in [(3, 5), (3, 6)]
+import sys; assert sys.version_info[:2] in [(3, 5), (3, 6), (3, 7)]
 import argparse, logging, email.mime.text, getpass, socket, smtplib
 
 
