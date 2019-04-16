@@ -14,14 +14,14 @@ function main() {
 	local homebrew_outdated=
 	local homebrew_cask_outdated=
 	local pyv_outdated=
-	local macappstore_outdated=
+	local macossystem_outdated=
 
 	while [ $# -gt 0 ]; do
 		local opt="$1"
 		shift
 		case "$opt" in
 			"--all")
-				set -- --brew --brew-cask --pyv --macappstore "$@"
+				set -- --brew --brew-cask --pyv --macossystem "$@"
 				;;
 			"--brew")
 				homebrew_outdated=1
@@ -41,11 +41,11 @@ function main() {
 			"--no-pyv")
 				pyv_outdated=
 				;;
-			"--macappstore"|"--appstore")
-				macappstore_outdated=1
+			"--macossystem"|"--system"|"--sys")
+				macossystem_outdated=1
 				;;
-			"--no-macappstore"|"--no-appstore")
-				macappstore_outdated=
+			"--no-macossystem"|"--no-system"|"--no-sys")
+				macossystem_outdated=
 				;;
 			*)
 				echo "invalid parameter: $opt"
@@ -72,8 +72,8 @@ function main() {
 			eval_indent 'show_pyv_updates "$PYV_ROOT_DIR"'
 		fi
 	fi
-	if [ "$macappstore_outdated" ]; then
-		echo "--- Mac App Store"
+	if [ "$macossystem_outdated" ]; then
+		echo "--- macOS System Updates"
 		eval_indent 'softwareupdate --list'
 	fi
 	echo ...
