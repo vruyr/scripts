@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+
+"""
+Usage:
+    {prog} TAP_FILE
+           [--list-descriptions-only]
+           [--path-map=PATH_MAP_SPEC]...
+           [--failing] [--skipping] [--passing]
+           [--description-contains=TEXT]...
+           [--description-not-contains=TEXT]...
+           [--description-contains-case-insensitive=TEXT]...
+           [--description-not-contains-case-insensitive=TEXT]...
+           [--description-not-in-playlist=FILE]...
+           [--shorter-than=SECONDS]
+           [--longer-than=SECONDS]
+
+Options:
+    --list-descriptions-only, -l                          Instead of printing the entire TAP entry, only show descriptions of selected tests.
+    --path-map, -P PATH_MAP_SPEC                          Replace occurrences of path prefixes before the colon (`:`)
+                                                          in specified PATH_MAP_SPEC by path prefixes after the colon.
+    --failing, -f                                         Select failing tests.
+    --skipping, -s                                        Select skipping tests.
+    --passing, -p                                         Select passing tests.
+    --description-contains, -c TEXT                       Select only tests whose description contains specified text.
+    --description-contains-case-insensitive, -C TEXT      Select only tests whose description contains specified text, ignoring case.
+    --description-not-contains, -n TEXT                   Select only tests whose description does not contain specified text.
+    --description-not-contains-case-insensitive, -N TEXT  Select only tests whose description does not contain specified text, ignoring case.
+    --description-not-in-playlist, -X FILE                Select only tests whose description is not included in the specified playlist.
+    --shorter-than SECONDS                                Select only tests that were running shorter than specified number of seconds.
+    --longer-than SECONDS                                 Select only tests that were running longer than specified number of seconds.
+"""
+
+import sys, asyncio, textwrap, collections, re, pathlib, os, json, functools, datetime, xml.etree.ElementTree
+# pip install 'docopt==0.6.2'
+import docopt
+# pip install 'PyYAML==3.13'
+import yaml
+# pip install 'tap.py==2.5'
+import tap.parser
+
+
+
+async def main(*, args, prog):
+	params = docopt.docopt(
+		__doc__.replace("\t", "    ").format(prog=prog),
+		argv=args,
+		help=True,
+		options_first=False,
+		version="0.0.0"
+	)
+	list_descriptions_only = params.pop("--list-descriptions-only")
+	tap_file_path = params.pop("TAP_FILE")
+	path_mappings = params.pop("--path-map")
+	test_predicates = []
+	if params.pop("--failing"):
+		test_predicates.append(
+			lambda entry, selected: selected and not entry.ok
+		)
+	if params.pop("--passing"):
+		test_predicates.append(
+			lambda entry, selected: selected and entry.ok and not entry.skip
+		)
+	if params.pop("--skipping"):
+		test_predicates.append(
+			lambda entry, selected: selected and entry.ok and entry.skip
+		)
+	for text in params.pop("--description-contains"):
+		test_predicates.append(functools.partial(test_predicate_description_contains, text, False))
+	for text in params.pop("--description-contains-case-insensitive"):
+		test_predicates.append(functools.partial(test_predicate_description_contains, text, True))
+	for text in params.pop("--description-not-contains"):
+		test_predicates.append(functools.partial(test_predicate_description_not_contains, text, False))
+	for text in params.pop("--description-not-contains-case-insensitive"):
+		test_predicates.append(functools.partial(test_predicate_description_not_contains, text, True))
+	tests_to_exclude = set()
+	for playlist_file in params.pop("--description-not-in-playlist"):
+		tests_to_exclude |= set(load_vstest_playlist(playlist_file))
+	test_predicates.append(functools.partial(test_predicate_not_in, tests_to_exclude))
+	longer_than = params.pop("--longer-than")
+	if longer_than is not None:
+		test_predicates.append(functools.partial(test_predicate_longer_than, datetime.timedelta(seconds=float(longer_than))))
+	del longer_than
+	shorter_than = params.pop("--shorter-than")
+	if shorter_than is not None:
+		test_predicates.append(functools.partial(test_predicate_shorter_than, datetime.timedelta(seconds=float(shorter_than))))
+	del shorter_than
+	assert not params, params
+
+	def split_mapping(m, sep="=>"):
+		a, s, b = m.partition(sep)
+		assert s == sep
+		return (pathlib.Path(a), pathlib.Path(b))
+	path_mappings = [split_mapping(m) for m in path_mappings]
+	del split_mapping
+
+	path_mappings_file = pathlib.Path("~/.config/taptool/path_mappings.json").expanduser()
+	if path_mappings_file.exists():
+		with path_mappings_file.open("r") as fo:
+			path_mappings.extend((pathlib.Path(a), pathlib.Path(b)) for a, b in json.load(fo))
+
+	num_tests_expected = None
+	num_tests_found = 0
+	num_tests_selected = 0
+
+	for entry in tap.parser.Parser().parse_file(tap_file_path):
+		if entry.category == "version":
+			assert entry.version == 13, entry.version
+		elif entry.category == "plan":
+			num_tests_expected = entry.expected_tests
+			assert not entry.skip, entry.directive.text
+		elif entry.category == "test":
+			num_tests_found += 1
+			selected = True
+			for pred in test_predicates:
+				selected = pred(entry, selected)
+			if not selected:
+				continue
+			num_tests_selected += 1
+			assert not entry.todo
+			yaml_block = entry.yaml_block
+			if yaml_block:
+				yaml_block["duration"] = parse_duration(yaml_block["duration"])
+			if list_descriptions_only:
+				print(entry.description)
+			else:
+				print(
+					str(entry),
+					dump_yaml_block(yaml_block, path_mappings=path_mappings) if yaml_block is not None else None,
+					sep="\n",
+					end="\n",
+				)
+		else:
+			raise ValueError(f"Unsupported tap entry {entry.category!r}")
+
+	assert num_tests_found == num_tests_expected, (num_tests_found, num_tests_expected)
+
+	print(f"Total selected: {num_tests_selected}", file=sys.stderr)
+
+
+def load_vstest_playlist(playlist_file_path):
+	root = xml.etree.ElementTree.parse(playlist_file_path).getroot()
+	assert root.tag == "Playlist"
+	assert root.attrib == {"Version": "1.0"}
+	assert not root.text or not root.text.strip()
+	assert not root.tail or not root.tail.strip()
+	for e in root:
+		assert e.tag == "Add"
+		assert not e.text or not e.text.strip()
+		assert not e.tail or not e.tail.strip()
+		assert not list(e)
+		assert e.keys() == ["Test"]
+		yield e.get("Test")
+
+
+def parse_duration(duration):
+	m = re.match(r"(?P<hours>\d+):(?P<minutes>\d+):(?P<seconds>\d+\.\d+)", duration)
+	assert m, duration
+	return datetime.timedelta(
+		hours=int(m.group("hours")),
+		minutes=int(m.group("minutes")),
+		seconds=float(m.group("seconds")),
+	)
+
+
+def test_predicate_description_contains(text, ignore_case, entry, selected):
+	description = entry.description
+	if ignore_case:
+		description = description.lower()
+		text = text.lower()
+	return selected and text in description
+
+
+def test_predicate_description_not_contains(text, ignore_case, entry, selected):
+	description = entry.description
+	if ignore_case:
+		description = description.lower()
+		text = text.lower()
+	return selected and text not in description
+
+
+def test_predicate_not_in(tests_to_exclude, entry, selected):
+	return selected and entry.description not in tests_to_exclude
+
+
+def test_predicate_longer_than(duration, entry, selected):
+	reported_duration = entry.yaml_block["duration"] if entry.yaml_block is not None else None
+	return selected and (not reported_duration or parse_duration(reported_duration) >= duration)
+
+
+def test_predicate_shorter_than(duration, entry, selected):
+	reported_duration = entry.yaml_block["duration"] if entry.yaml_block is not None else None
+	return selected and (not reported_duration or parse_duration(reported_duration) <= duration)
+
+
+class folded_str(str): pass
+class literal_str(str): pass
+
+
+def folded_str_representer(dumper, data):
+	return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=">")
+
+
+def literal_str_representer(dumper, data):
+	return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+
+
+yaml.add_representer(datetime.timedelta, lambda dumper, data: dumper.represent_scalar("tag:yaml.org,2002:str", str(data), style="\""))
+yaml.add_representer(folded_str, folded_str_representer)
+yaml.add_representer(literal_str, literal_str_representer)
+
+
+def dump_yaml_block(data, *, indent=4, path_mappings=None):
+	data["output"] = literal_str(data["output"].replace("\r\n", "\n").replace("\t", " " * indent))
+	yaml_block = yaml.dump(
+		data,
+		indent=indent,
+		explicit_start=True,
+		explicit_end=True,
+		default_flow_style=False,
+	)
+	def replacement(m):
+		return f"""{apply_path_mappings(path_mappings, m.group("file"))}:{m.group("line")}"""
+	yaml_block = re.sub(r"(?<= in )(?P<file>.*):line (?P<line>\d+)\s*$", replacement, yaml_block, flags=re.MULTILINE)
+	return textwrap.indent(yaml_block, prefix=" " * indent, predicate=None)
+
+
+def apply_path_mappings(path_mappings, path):
+	path = pathlib.Path(path.replace("\\", "/"))
+	for old, new in path_mappings:
+ 		if path.parts[:len(old.parts)] == old.parts:
+			 path = pathlib.Path(*new.parts, *path.parts[len(old.parts):])
+	return os.fspath(path)
+
+
+def smain():
+	try:
+		if sys.platform == "win32":
+			asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+		return asyncio.run(main(args=sys.argv[1:], prog=sys.argv[0]))
+	except KeyboardInterrupt:
+		print(file=sys.stderr)
+
+
+if __name__ == "__main__":
+	sys.exit(smain())
