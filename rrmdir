@@ -43,6 +43,6 @@ do
 	find "$d" "${find_garbage_args[@]}" -delete -print
 
 	# recursive folder deletion
-	find "$d" -type d -mindepth 1 -empty -delete -print
+	find "$d" -mindepth 1 -type d -empty -delete -print
 	rmdir "$d"; echo "$d"
 done
