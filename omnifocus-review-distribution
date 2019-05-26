@@ -111,7 +111,7 @@ function processDocument(document, shouldUpdate) {
 	var projectIndexWidth = `${projects.length.toLocaleString()}`.length;
 
 	var daysOfWeeks = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-	var reviewDayOfWeek = 6;
+	var reviewDayOfWeek = 0;
 	var maxReviewsPerWeek = 5;
 	var reviewInterval = {
 		unit: "week",
