@@ -2,7 +2,7 @@
 
 from __future__ import print_function
 import sys; assert sys.version_info[:2] in [(3, 5), (3, 6), (3, 7)]
-import argparse, logging, email.mime.text, getpass, socket, smtplib
+import argparse, logging, email.mime.text, getpass, socket, smtplib, subprocess, shlex
 
 
 # TODO change --smtp parameter to --server and start using `secret` just like imap.py does
@@ -19,7 +19,7 @@ def main(argv=None):
 	password = None
 	if opts.username is not None:
 		username = opts.username
-		password = getpass.getpass(prompt=("Password for %s: " % username))
+		password = get_password(opts.smtp_server, username)
 
 	msg = email.mime.text.MIMEText(load_text(opts.file))
 
@@ -51,6 +51,30 @@ def main(argv=None):
 		if username is not None:
 			s.login(username, password)
 		s.send_message(msg)
+
+
+def get_password(server, username):
+	p = subprocess.run(
+		["security", "find-internet-password", "-r", "smtp", "-s", server, "-a", username, "-w"],
+		shell=False,
+		stdin=subprocess.DEVNULL,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.PIPE
+	)
+	if p.returncode == 0:
+		password = p.stdout.decode().rstrip("\r\n")
+		print("Found the password in Keychain.")
+		return password
+	print("No password found in Keychain, prompting.")
+	password = getpass.getpass("Password ({u}@{s}): ".format(u=username, s=server))
+	print("To save the password, execute: {}", " ".join(shlex.quote(x) for x in [
+		"security", "add-internet-password",
+		"-r", "smtp",
+		"-s", server,
+		"-a", username,
+		"-w"
+	]))
+	return password
 
 
 def load_text(filename):
