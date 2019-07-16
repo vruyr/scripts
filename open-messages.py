@@ -2,16 +2,17 @@
 
 """
 Usage:
-	{prog} [--message=TEXT] (ADDRESS)...
+	{prog} [--message=TEXT] [--just-print] (ADDRESS)...
 
 Positional Parameters:
 	ADDRESS  Message recipients
 
 Options:
 	--message, -m TEXT     The message text to pre-fill.
+	--just-print, -n       Do not open Messages, just print the url that will.
 """
 
-import sys, locale, os, urllib.parse, webbrowser
+import sys, locale, os, urllib.parse
 # pip install docopt==0.6.2
 import docopt
 
@@ -28,6 +29,7 @@ def main(*, args, prog):
 	)
 	addresses = params.pop("ADDRESS")
 	message_text = params.pop("--message")
+	just_print = params.pop("--just-print")
 	assert not params, params
 
 	params = {
@@ -37,9 +39,18 @@ def main(*, args, prog):
 	if message_text:
 		params["body"] = message_text
 
-	url = urllib.parse.urlunsplit(["sms", "", "/open", urllib.parse.urlencode(params), ""])
+	url = urllib.parse.urlunsplit([
+		"sms",
+		"",
+		"/open",
+		urllib.parse.urlencode(params, quote_via=urllib.parse.quote),
+		""
+	])
 	print(url)
-	webbrowser.open(url)
+
+	if not just_print:
+		import webbrowser
+		webbrowser.open(url)
 
 
 def smain(argv=None):
