@@ -13,6 +13,7 @@ function main() {
 
 	local homebrew_outdated=
 	local homebrew_cask_outdated=
+	local npm_outdated=
 	local pyv_outdated=
 	local macossystem_outdated=
 
@@ -21,7 +22,7 @@ function main() {
 		shift
 		case "$opt" in
 			"--all")
-				set -- --brew --brew-cask --pyv --macossystem "$@"
+				set -- --brew --brew-cask --npm --pyv --macossystem "$@"
 				;;
 			"--brew")
 				homebrew_outdated=1
@@ -34,6 +35,12 @@ function main() {
 				;;
 			"--no-brew-cask")
 				homebrew_cask_outdated=
+				;;
+			"--npm")
+				npm_outdated=1
+				;;
+			"--no-npm")
+				npm_outdated=
 				;;
 			"--pyv")
 				pyv_outdated=1
@@ -65,6 +72,10 @@ function main() {
 	if [ "$homebrew_cask_outdated" ]; then
 		echo "--- Homebrew Cask Outdated"
 		eval_indent 'brew cask outdated --verbose --greedy'
+	fi
+	if [ "$npm_outdated" ]; then
+		echo "--- Npm Outdated"
+		eval_indent 'npm outdated --global'
 	fi
 	if [ "$pyv_outdated" ]; then
 		if [ -n "$PYV_ROOT_DIR" ]; then
