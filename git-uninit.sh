@@ -19,7 +19,7 @@ function main() {
 			exit 1
 		fi
 
-		if [ "$gitdir" != "." ]; then
+		if [ "$(cd "$gitdir" && pwd)" != "$(pwd)" ]; then
 			echo 'FATAL: Please `cd` to the root of the repo (detected git-dir: '"$gitdir"').'
 			exit 1
 		fi
@@ -30,7 +30,7 @@ function main() {
 			exit 1
 		fi
 
-		if [ "$PWD" != "$worktree" ]; then
+		if [ "$(cd "$worktree" && pwd)" != "$(pwd)" ]; then
 			echo 'FATAL: Please `cd` to the repo root folder first (detected worktree: '"$worktree"').'
 			exit 1
 		fi
