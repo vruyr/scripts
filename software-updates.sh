@@ -85,7 +85,10 @@ function main() {
 	fi
 	if [ "$macossystem_outdated" ]; then
 		echo "--- macOS System Updates"
-		eval_indent 'softwareupdate --list'
+		local o="$(softwareupdate --list 2>&1)"
+		if [ -n "$o" -a "$o" != $'No new software available.\nSoftware Update Tool\n\nFinding available software' ]; then
+			eval_indent ''
+		fi
 	fi
 	echo ...
 }
@@ -95,7 +98,7 @@ function show_pyv_updates() {
 	rootdir="$1"
 	local output=
 	for venv in $(compgen -A directory "$rootdir/"); do
-		output="$(eval_indent '$venv/bin/pip --disable-pip-version-check list --outdated --not-required --format=json | jq -r '\''.[]|.name + "==" + .version + " < " + .latest_version'\')"
+		output="$(eval_indent 'PYTHONWARNINGS="ignore:DEPRECATION" $venv/bin/pip --disable-pip-version-check list --outdated --not-required --format=json | jq -r '\''.[]|.name + "==" + .version + " < " + .latest_version'\')"
 		if [ -z "$output" ]; then
 			continue
 		fi
