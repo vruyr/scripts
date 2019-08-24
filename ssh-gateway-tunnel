@@ -1,0 +1,50 @@
+#!/usr/bin/env node
+
+const util = require("util");
+const {spawn} = require("child_process");
+const crypto = require("crypto");
+
+
+function main(...sshargs) {
+	log("Forwarding ssh connection to: ssh %j", sshargs);
+	let ssh = spawn("/usr/bin/ssh", sshargs, {stdio: ["pipe", "pipe", "pipe"]});
+
+	ssh.stderr.on("data", (chunk) => {
+		log("[gateway stderr]: %o", chunk.toString("utf8"));
+	});
+
+	let controlString = crypto.randomBytes(16).toString("hex");
+
+	function sshStdoutWatcher(chunk) {
+		if(chunk == null) {
+			log("Waiting for control string %s", controlString);
+			ssh.stdin.write(`echo ${controlString}\n`);
+		}
+
+		let chunkStr = chunk ? chunk.toString("utf8").trim() : null;
+		log("[gateway stdout]: %o", chunkStr);
+		if(chunkStr != controlString) {
+			ssh.stdout.once("data", sshStdoutWatcher);
+			return;
+		}
+
+		log("Handing over the connection to ssh client.");
+		ssh.stdout.pipe(process.stdout);
+		ssh.stdin.write("exec /usr/sbin/sshd -f ~/.bin/mysshd/sshd_config -i\n");
+		process.stdin.pipe(ssh.stdin);
+	}
+
+	sshStdoutWatcher();
+}
+
+
+function log(...args) {
+	if(process.env.SSH_GATEWAY_TUNNEL_DEBUG) {
+		process.stderr.write("==>>");
+		process.stderr.write(util.format(...args));
+		process.stderr.write("\n");
+	}
+}
+
+
+main(...process.argv.slice(2));
