@@ -17,7 +17,7 @@ function main() {
 	for r in "${all_repos[@]}"; do
 		r="$HOME/$r"
 		local w="$(command git -C "$r" rev-parse --show-toplevel)"
-		local w=${w:-${r%.git}}
+		local w=${w:-${r%/.git}}
 		(
 			if [ "${r#"$w"}" != ".git" ]; then
 				export GIT_DIR="$r"
