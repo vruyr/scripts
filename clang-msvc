@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+
+if false; then
+	llvm_dir="$(brew --prefix llvm)"
+	clang="${llvm_dir}/bin/clang"
+	export LDFLAGS="-L${llvm_dir}/lib -Wl,-rpath,${llvm_dir}/lib"
+	export LDFLAGS="-L${llvm_dir}/lib"
+	export CPPFLAGS="-I${llvm_dir}/include"
+else
+	clang=/usr/bin/clang
+fi
+
+
+# https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warnings-by-compiler-version?view=vs-2017
+msvc_version=19.20.27004.0 # Visual Studio 2019 RTM
+msvc_version=19.16.26926.0 # Visual Studio 2017 version 15.9
+
+
+# http://releases.llvm.org/6.0.1/tools/clang/docs/MSVCCompatibility.html
+# http://releases.llvm.org/6.0.1/tools/clang/docs/UsersManual.html#microsoft-extensions
+exec "$clang" -fms-compatibility -fms-compatibility-version="$msvc_version" -fdelayed-template-parsing "$@"
