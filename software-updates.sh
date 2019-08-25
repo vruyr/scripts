@@ -98,6 +98,9 @@ function show_pyv_updates() {
 	rootdir="$1"
 	local output=
 	for venv in $(compgen -A directory "$rootdir/"); do
+		if [ "$venv" == "$rootdir/bin" ]; then
+			continue
+		fi
 		output="$(eval_indent 'PYTHONWARNINGS="ignore:DEPRECATION" $venv/bin/pip --disable-pip-version-check list --outdated --not-required --format=json | jq -r '\''.[]|.name + "==" + .version + " < " + .latest_version'\')"
 		if [ -z "$output" ]; then
 			continue
