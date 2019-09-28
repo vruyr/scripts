@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+
+if [ "$#" -eq 0 ]; then
+	set -- -d youtube.com
+fi
+
+
 item_ids=()
 
 
