@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.7
+#!/usr/bin/env python3
 
 import sys, argparse, locale, subprocess, os, datetime, time, collections, re, json, pathlib
 
@@ -41,7 +41,9 @@ def main(*, args, prog):
 		finally:
 			sys.stdout.write(ANSI_rmcup)
 	else:
-		sys.stdout.write(render())
+		output = render()
+		sys.stdout.write(output)
+		return 0 if output else 1
 
 
 FIELD_NAME_PADDING = ("{", "}")
