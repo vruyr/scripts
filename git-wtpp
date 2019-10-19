@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+
+"""
+Usage:
+	{prog} (push|pull) [options] <remote>
+
+Options:
+	--force  Override worktree modifications
+"""
+
+import sys, locale, asyncio, subprocess, os, re, shlex
+# pip install docopt==0.6.2
+import docopt
+
+
+async def main(*, args, prog):
+	locale.setlocale(locale.LC_ALL, "")
+
+	params = docopt.docopt(
+		__doc__.replace("\t", " " * 4).format(prog=os.path.basename(prog)),
+		argv=args,
+		help=True,
+		version=True,
+		options_first=False
+	)
+	pushpull = (params.pop("push"), params.pop("pull"))
+	assert pushpull not in ((True, True), (False, False)), pushpull
+	verb = "push" if pushpull == (True, False) else "pull"
+	del pushpull
+	remote_name = params.pop("<remote>")
+	shall_force = params.pop("--force")
+	assert not params, params
+
+	log = asyncio.Queue()
+	pending_tasks = []
+	printer_task = asyncio.create_task(
+		printer(queue=log, fo=sys.stdout)
+	)
+
+	#
+	# ---
+	#
+	git_local = Git(cmd=("git",))
+	git_remote = await git_local.create_remote_git(remote=remote_name)
+
+	await log.put("Comparing local and remote HEADs.")
+	head_local = await git_local.get_rev_sha("HEAD")
+	head_remote = await git_remote.get_rev_sha("HEAD")
+	assert head_local == head_remote, (head_local, head_remote)
+
+	if verb == "push":
+		await log.put("Creating a stash for local changes")
+		stash = await git_local.stash_create()
+		await log.put("Pushing the created stash to remote")
+		if stash:
+			await git_local.push("--no-verify", "--force", remote_name, f"{stash}:refs/wwtp/stash")
+		if shall_force:
+			remote_stash = await git_remote.stash_create()
+			if remote_stash:
+				await log.put(("Remote modifications are preserved in a stash ", remote_stash))
+			await git_remote.command("restore", "-sHEAD", "-WS", ".", capture_output=False)
+		if stash:
+			await log.put("Applying the stash on remote side")
+			await git_remote.stash_apply(stash)
+	elif verb == "pull":
+		raise NotImplementedError
+	else:
+		assert False, verb
+	#
+	# ---
+	#
+
+	await asyncio.gather(*pending_tasks)
+	current_task = asyncio.current_task()
+	all_tasks = asyncio.all_tasks()
+	assert {current_task, printer_task} == all_tasks, (current_task, all_tasks)
+
+	await log.put(None)
+	await printer_task
+
+
+class Git(object):
+	def __init__(self, *, cmd=None, stdout_encoding="UTF-8"):
+		if cmd is None:
+			cmd = ("git",)
+		self._cmd = cmd[0]
+		self._args = cmd[1:]
+		self._stdout_encoding = stdout_encoding
+
+
+	async def create_remote_git(self, *, remote):
+		host = await self.config_get(f"remote.{remote}.wtpp-ssh-host")
+		cmd = shlex.split(await self.config_get(f"remote.{remote}.wtpp-ssh-command"))
+		return self.__class__(
+			cmd=["ssh", host, *cmd],
+			stdout_encoding=self._stdout_encoding
+		)
+
+	async def command(self, *args, capture_output=True):
+		p = await asyncio.create_subprocess_exec(
+			self._cmd, *self._args, *args,
+			stdout=subprocess.PIPE if capture_output else None,
+			stderr=subprocess.PIPE if capture_output else None,
+		)
+		stdout, stderr = await p.communicate()
+		assert p.returncode == 0 and not stderr, (p.returncode, stderr, (self._cmd, *self._args, *args))
+		return stdout
+
+
+	async def rev_parse(self, *args):
+		return (await self.command("rev-parse", *args)).decode(self._stdout_encoding)
+
+
+	async def rev_list(self, *args):
+		return (await self.command("rev-list", *args)).decode(self._stdout_encoding)
+
+
+	async def get_rev_sha(self, rev):
+		o = (await self.rev_parse(rev)).splitlines()
+		assert len(o) == 1, o
+		return o[0]
+
+
+	async def get_rev_fullname(self, rev):
+		o = (await self.rev_parse("--symbolic-full-name", rev)).splitlines()
+		assert len(o) == 1, o
+		return o[0]
+
+
+	async def config_get(self, name):
+		return (await self.command("config", "--get", name)).decode(self._stdout_encoding).rstrip("\n")
+
+
+	async def stash_create(self):
+		o = await self.command("stash", "create")
+		return self.extract_sha(o) if o != b"" else None
+
+
+	async def stash_apply(self, sha):
+		await self.command("stash", "apply", "--index", sha, capture_output=False)
+
+
+	async def push(self, *args):
+		await self.command("push", *args, capture_output=False)
+
+
+	@staticmethod
+	def extract_sha(b):
+		m = re.match(rb"^([0-9a-fA-F]{40})\n$", b)
+		assert m, b
+		return m.groups()[0].decode("ascii")
+
+
+async def printer(*, queue, fo):
+	while True:
+		item = await queue.get()
+		if item is None:
+			break
+		if isinstance(item, (list, tuple)):
+			print(*item, file=fo)
+		else:
+			print(item, file=fo)
+
+
+def smain(argv=None):
+	if argv is None:
+		argv = sys.argv
+
+	try:
+		if sys.platform == "win32":
+			asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+		return asyncio.run(
+			main(
+				args=argv[1:],
+				prog=argv[0]
+			),
+			debug=False,
+		)
+	except KeyboardInterrupt:
+		print(file=sys.stderr)
+
+
+if __name__ == "__main__":
+	sys.exit(smain())
