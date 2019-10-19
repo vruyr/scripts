@@ -49,7 +49,7 @@ function incoming() {
 		else
 			local url_prefix=
 			for url_prefix in "${url_prefixes[@]}"; do
-				if starts_with "$u" "$url_prefix"; then
+				if starts_with "$u" "$url_prefix" || starts_with "${HOME}${u#\~}" "$url_prefix"; then
 					must_skip=
 					break
 				fi
