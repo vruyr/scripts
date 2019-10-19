@@ -17,7 +17,11 @@ while read item_id given_url resolved_title; do
 	resolved_title=${resolved_title//\|/%7C}
 	resolved_title=${resolved_title//\"/%22}
 
-	youtube-dl --format 'bestvideo[ext=mp4]+bestaudio[ext=m4a]' --output "%(uploader)s/%(upload_date)s %(duration) 5ds ${resolved_title}.%(extractor)s.%(id)s.%(ext)s" "${given_url}"
+	youtube-dl \
+		--embed-thumbnail \
+		--format 'bestvideo[ext=mp4]+bestaudio[ext=m4a]' \
+		--output "%(uploader)s/%(upload_date)s ${resolved_title}.%(extractor)s.%(id)s.%(ext)s" \
+		"${given_url}"
 
 	item_ids+=( "$item_id" )
 done < <(getpocket list "$@" --format $'{item_id}\t{given_url}\t{resolved_title}\n')
