@@ -63,7 +63,11 @@ function main() {
 
 	if [ "$homebrew_outdated" -o "$homebrew_cask_outdated" ]; then
 		echo "--- Homebrew Update"
-		eval_indent 'brew update'
+		local o="$(brew update)"
+		if [ -n "$o" -a "$o" != "Already up-to-date." ]; then
+			echo "$o" | indent
+		fi
+		eval_indent ''
 	fi
 	if [ "$homebrew_outdated" ]; then
 		echo "--- Homebrew Outdated"
