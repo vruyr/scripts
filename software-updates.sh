@@ -87,7 +87,7 @@ function main() {
 		echo "--- macOS System Updates"
 		local o="$(softwareupdate --list 2>&1)"
 		if [ -n "$o" -a "$o" != $'No new software available.\nSoftware Update Tool\n\nFinding available software' ]; then
-			eval_indent ''
+			echo "$o" | indent
 		fi
 	fi
 	echo ...
@@ -113,7 +113,12 @@ function show_pyv_updates() {
 
 
 function eval_indent() {
-	eval "$@" 2>&1 | sed 's/^/'$'\t''/'
+	eval "$@" 2>&1 | indent
+}
+
+
+function indent() {
+	sed 's/^/'$'\t''/'
 }
 
 
