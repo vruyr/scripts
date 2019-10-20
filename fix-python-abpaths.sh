@@ -25,7 +25,6 @@ function main() {
 	for target_file in $(find_all_executable_files "$path_after"); do
 		for library_path in $(list_required_libs "$target_file"); do
 			startswith "$library_path" "$path_before" || continue
-			echo "MATCH"
 
 			local relative_path="${library_path:${#path_before}}"
 			local num_folders_up="${target_file:${#path_after}}"
