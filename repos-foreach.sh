@@ -9,13 +9,13 @@ function main() {
 	old_IFS="$IFS"
 	IFS=$'\n'
 	all_repos=(
-		$(jq <~/.repos.json -r '.repositories[]')
+		$(jq <~/.repos.json -r '.repositories[]' | tr -d '\r')
 	)
 	IFS="$old_IFS"
 
 	local r
 	for r in "${all_repos[@]}"; do
-		r="$HOME/$r"
+		r="$(cd "$HOME" && cd "$r" && pwd)"
 		local w="$(command git -C "$r" rev-parse --show-toplevel)"
 		local w=${w:-${r%/.git}}
 		(
