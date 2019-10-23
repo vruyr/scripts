@@ -110,6 +110,24 @@ function incoming() {
 }
 
 
+function find-object() {
+	if [ "$#" -ne 1 ]; then
+		echo >&2 "USAGE: repos-foreach.sh find-objects <object_nameish>"
+		return 1
+	fi
+	local object_nameish="$1"; shift
+
+	local object_type="$(git cat-file -t "$object_nameish" 2>/dev/null)"
+	if [ $? -ne 0 -o -z "$object_type" ]; then
+		return 0
+	fi
+
+	local object_sha="$(git rev-parse "$object_nameish")"
+
+	printf "%s\t%s\t%s\n" "$object_sha" "$object_type" "$(pwd)"
+}
+
+
 function starts_with() {
 	test "${1#$2}" != "$1"
 }
