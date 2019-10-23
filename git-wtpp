@@ -43,25 +43,32 @@ async def main(*, args, prog):
 	git_local = Git(cmd=("git",))
 	git_remote = await git_local.create_remote_git(remote=remote_name)
 
-	await log.put("Comparing local and remote HEADs.")
+	await log.put("Making sure local and remote HEADs are the same.")
 	head_local = await git_local.get_rev_sha("HEAD")
 	head_remote = await git_remote.get_rev_sha("HEAD")
 	assert head_local == head_remote, (head_local, head_remote)
+	await log.put(["Both are at:", head_local])
 
 	if verb == "push":
-		await log.put("Creating a stash for local changes")
-		stash = await git_local.stash_create()
-		await log.put("Pushing the created stash to remote")
-		if stash:
-			await git_local.push("--no-verify", "--force", remote_name, f"{stash}:refs/wwtp/stash")
 		if shall_force:
-			remote_stash = await git_remote.stash_create()
-			if remote_stash:
-				await log.put(("Remote modifications are preserved in a stash ", remote_stash))
-			await git_remote.command("restore", "-sHEAD", "-WS", ".", capture_output=False)
-		if stash:
-			await log.put("Applying the stash on remote side")
+			await log.put("Stashing remote changes.")
+			if remote_stash := await git_remote.stash_create():
+				await log.put(("Remote modifications are preserved in a stash", remote_stash))
+			else:
+				await log.put("Nothing to stash.")
+			await git_remote.command("restore", "-s", "HEAD", "-W", "-S", ".", capture_output=False)
+
+		await log.put("Stashing local changes.")
+		if stash := await git_local.stash_create():
+			remote_stash_ref = f"refs/wtpp/stashes/{stash}"
+			await log.put(["Pushing the newly created stash to", remote_name, "as", remote_stash_ref])
+			await git_local.push("--no-verify", "--force", remote_name, f"{stash}:{remote_stash_ref}")
+			await log.put("Applying the stash on remote side.")
 			await git_remote.stash_apply(stash)
+			await log.put("Cleaning up.")
+			await git_local.push("--delete", remote_name, remote_stash_ref)
+		else:
+			await log.put("Nothing to stash.")
 	elif verb == "pull":
 		raise NotImplementedError
 	else:
@@ -96,14 +103,16 @@ class Git(object):
 			stdout_encoding=self._stdout_encoding
 		)
 
-	async def command(self, *args, capture_output=True):
+	async def command(self, *args, capture_output=True, returncode_ok=None):
+		if returncode_ok is None:
+			returncode_ok = lambda x: x == 0
 		p = await asyncio.create_subprocess_exec(
 			self._cmd, *self._args, *args,
 			stdout=subprocess.PIPE if capture_output else None,
 			stderr=subprocess.PIPE if capture_output else None,
 		)
 		stdout, stderr = await p.communicate()
-		assert p.returncode == 0 and not stderr, (p.returncode, stderr, (self._cmd, *self._args, *args))
+		assert returncode_ok(p.returncode) and not stderr, (p.returncode, stderr, (self._cmd, *self._args, *args))
 		return stdout
 
 
@@ -132,7 +141,7 @@ class Git(object):
 
 
 	async def stash_create(self):
-		o = await self.command("stash", "create")
+		o = await self.command("stash", "create", returncode_ok=lambda x: x in (0, 1))
 		return self.extract_sha(o) if o != b"" else None
 
 
