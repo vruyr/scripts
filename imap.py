@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
-assert sys.version_info[:2] in [(3, 6), (3, 7)]
+assert sys.version_info[:2] in [(3, 6), (3, 7), (3, 8)]
 import imaplib, getpass, hmac, email, shlex, subprocess, re, pathlib, json
 
 
