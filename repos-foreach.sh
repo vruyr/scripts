@@ -80,6 +80,13 @@ function incoming() {
 			$(printf "\n^%s" $(git show-ref | grep -v " refs/remotes/" | cut -b -40))
 		)
 		IFS="$old_IFS"
+
+		any_new_tags="$(git fetch --prune --prune-tags --tags --dry-run "$r" 2>&1)"
+
+		if [ -n "$any_new_tags" ]; then
+			output_messages+=( "$any_new_tags" )
+		fi
+
 		if [ -n "$(git -P log --oneline "${exclusions[@]}" --remotes="$r" "${nolocalrefs[@]}" -- )" ]; then
 			l="$(git -c color.ui="$color_ui" -P gl --boundary "${exclusions[@]}" --remotes="$r" "${nolocalrefs[@]}" -- | sed $'s/^/\t\t/')"
 			output_messages+=( "$(printf "\n\t%s\n%s\x1b[0m\n" "$r" "$l")" )
