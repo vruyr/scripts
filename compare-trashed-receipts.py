@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Python Standard Library
-import sys; assert sys.version_info[:2] in [(3, 7)]
+import sys; assert sys.version_info[:2] in [(3, 7), (3, 8)]
 import asyncio, subprocess, os, pathlib, shlex
 
 
