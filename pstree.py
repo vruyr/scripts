@@ -58,6 +58,7 @@ def gen_process_trees():
 	fields = [
 		("pid", "pid"),
 		("ppid", "ppid"),
+		("pgid", "pgid"),
 		("user", "user"),
 		("etime", "etime"),
 		("args", "args") # must be last
@@ -130,6 +131,7 @@ class TreeNode(object):
 	horizontal = "─┬"
 	style_lines = "\x1b[2;34m"
 	style_pid   = "\x1b[2;35m"
+	style_pgid  = "\x1b[2;34m"
 	style_cmd   = "\x1b[37m"
 	style_reset = "\x1b[0m"
 
@@ -199,6 +201,13 @@ class TreeNode(object):
 			ppid = self.get_field("ppid")
 			self._field_cache["ppid"] = int(ppid) if ppid is not None else None
 		return self._field_cache["ppid"]
+
+	@property
+	def pgid(self):
+		if "pgid" not in self._field_cache:
+			pgid = self.get_field("pgid")
+			self._field_cache["pgid"] = int(pgid) if pgid is not None else None
+		return self._field_cache["pgid"]
 
 	@property
 	def user(self):
@@ -344,6 +353,10 @@ class TreeNode(object):
 			return
 		yield self.get_style("pid")
 		yield "{}".format(self.pid)
+		yield self.get_style("reset")
+		yield " "
+		yield self.get_style("pgid")
+		yield "(PGID: {})".format(self.pgid)
 		yield self.get_style("reset")
 		yield " "
 		yield self.get_style("user")
