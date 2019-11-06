@@ -30,6 +30,14 @@ on run
 				repeat while (count of (every row of websitesTable)) is 0
 					delay 0.25
 				end repeat
+				
+				-- See https://stackoverflow.com/a/36906011
+				set focused of websitesTable to true
+				tell websitesTable to keystroke "a" using command down -- select all rows
+				
+				set previousRowCount to count of every row of websitesTable
+				set numToRemove to 0
+				
 				repeat with r in every row of websitesTable
 					set websiteOrigin to my getOriginFromWebsiteDataDescription(description of UI element 1 of r)
 					set mustRemove to true
@@ -41,28 +49,38 @@ on run
 					end repeat
 					if mustRemove then
 						log "Removing: " & websiteOrigin
-						set selected of r to true
-						set previousRowCount to count of every row of websitesTable
-						click button "Remove" of websiteDataSheet
-						set mustStop to false
-						repeat while previousRowCount is (count of every row of websitesTable)
-							delay 0.25
-						end repeat
-						exit repeat
+						set numToRemove to numToRemove + 1
+					else
+						log "Keeping : " & websiteOrigin
+						set selected of r to false
 					end if
 				end repeat
+				
+				if numToRemove > 0 then
+					set expectedRowCount to previousRowCount - numToRemove
+					click button "Remove" of websiteDataSheet
+					repeat while expectedRowCount is (count of every row of websitesTable)
+						delay 0.25
+					end repeat
+					
+					delay 1 -- TODO This is a hack. Figure out a way to prevent the race condition, for example by monitoring changes in the data sheet and proceeding only after a timeout of inactivity.
+					
+					log "Remaining:"
+					set websitesTable to table 1 of scroll area 1 of websiteDataSheet
+					repeat with r in every row of websitesTable
+						log "	" & my getOriginFromWebsiteDataDescription(description of UI element 1 of r)
+					end repeat
+				else
+					log "Nothing to remove."
+				end if
+				
+				click button "Done" of websiteDataSheet
+				tell (every button of prefsWindow whose subrole is "AXCloseButton") to click
+				
 				if mustStop then
 					exit repeat
 				end if
 			end repeat
-			
-			log "Remaining:"
-			repeat with r in every row of websitesTable
-				log "	" & my getOriginFromWebsiteDataDescription(description of UI element 1 of r)
-			end repeat
-			
-			click button "Done" of websiteDataSheet
-			tell (every button of prefsWindow whose subrole is "AXCloseButton") to click
 		end tell
 	end tell
 	return
