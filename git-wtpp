@@ -59,18 +59,37 @@ async def main(*, args, prog):
 			await git_remote.command("restore", "-s", "HEAD", "-W", "-S", ".", capture_output=False)
 
 		await log.put("Stashing local changes.")
-		if stash := await git_local.stash_create():
-			remote_stash_ref = f"refs/wtpp/stashes/{stash}"
+		if local_stash := await git_local.stash_create():
+			remote_stash_ref = f"refs/wtpp/stashes/{local_stash}"
 			await log.put(["Pushing the newly created stash to", remote_name, "as", remote_stash_ref])
-			await git_local.push("--no-verify", "--force", remote_name, f"{stash}:{remote_stash_ref}")
+			await git_local.push("--no-verify", "--force", remote_name, f"{local_stash}:{remote_stash_ref}")
 			await log.put("Applying the stash on remote side.")
-			await git_remote.stash_apply(stash)
+			await git_remote.stash_apply(local_stash)
 			await log.put("Cleaning up.")
-			await git_local.push("--delete", remote_name, remote_stash_ref)
+			await git_remote.command("update-ref", "-d", remote_stash_ref)
 		else:
 			await log.put("Nothing to stash.")
 	elif verb == "pull":
-		raise NotImplementedError
+		if shall_force:
+			await log.put("Stashing local changes.")
+			if local_stash := await git_local.stash_create():
+				await log.put(("Local modifications are preserved in a stash", local_stash))
+			else:
+				await log.put("Nothing to stash.")
+			await git_local.command("restore", "-s", "HEAD", "-W", "-S", ".", capture_output=False)
+
+		await log.put("Stashing remote changes.")
+		if remote_stash := await git_remote.stash_create():
+			remote_stash_ref = f"refs/wtpp/stashes/{remote_stash}"
+			await git_remote.command("update-ref", remote_stash_ref, remote_stash)
+			await log.put(["Fetching the newly created stash ", remote_stash])
+			await git_local.fetch(remote_name, f"{remote_stash}")
+			await log.put("Applying the stash on local side.")
+			await git_local.stash_apply(remote_stash)
+			await log.put("Cleaning up.")
+			await git_remote.command("update-ref", "-d", remote_stash_ref)
+		else:
+			await log.put("Nothing to stash.")
 	else:
 		assert False, verb
 	#
@@ -147,6 +166,10 @@ class Git(object):
 
 	async def stash_apply(self, sha):
 		await self.command("stash", "apply", "--index", sha, capture_output=False)
+
+
+	async def fetch(self, *args):
+		await self.command("fetch", *args, capture_output=False)
 
 
 	async def push(self, *args):
