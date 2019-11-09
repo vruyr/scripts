@@ -5,6 +5,7 @@ set -o errexit
 selfdir="$(cd "$(dirname "$0")" && pwd)"
 download_folder=~/Downloads/youtube
 destination_folder=/Volumes/Public/Videos/youtube
+destination_git_folder=~/.xgit/vault-public-videos
 
 test -d "$destination_folder" || {
 	echo 2>&1 "Please mount the destination folder before proceeding."
@@ -12,7 +13,8 @@ test -d "$destination_folder" || {
 }
 
 if [ -e "$download_folder" ]; then
-	echo 2>&1 "WARNING: Reusing an already existing download folder: ${download_folder}"
+	echo 2>&1 "WARNING: Reusing an already existing download folder:"
+	tree 2>&1 -aNF "${download_folder}"
 else
 	mkdir -p "$download_folder"
 fi
@@ -27,6 +29,7 @@ IFS="$old_IFS"
 unset old_IFS
 for f in "${all_files[@]}"; do
 	if [ -e "${destination_folder}/$f" ]; then
+		git -C "$destination_git_folder" add -v "${destination_folder}/$f"
 		rm -v "${download_folder}/$f"
 	fi
 done
