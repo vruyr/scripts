@@ -1,33 +1,23 @@
 #!/usr/bin/env bash
 
+set -o errexit
 
-if [ "$#" -eq 0 ]; then
-	set -- -d youtube.com
+selfdir="$(cd "$(dirname "$0")" && pwd)"
+download_folder=~/Downloads/youtube
+destination_folder=/Volumes/Public/Videos/youtube
+
+test -d "$destination_folder" || {
+	echo 2>&1 "Please mount the destination folder before proceeding."
+	exit 1
+}
+
+if [ -e "$download_folder" ]; then
+	echo 2>&1 "WARNING: Reusing an already existing download folder: ${download_folder}"
+else
+	mkdir -p "$download_folder"
 fi
-
-
-item_ids=()
-
-
-IFS=$'\t'
-while read item_id given_url resolved_title; do
-	resolved_title=${resolved_title//\:/%3A}
-	resolved_title=${resolved_title//\?/%3F}
-	resolved_title=${resolved_title//\//%2F}
-	resolved_title=${resolved_title//\|/%7C}
-	resolved_title=${resolved_title//\"/%22}
-
-	youtube-dl \
-		--embed-thumbnail \
-		--format 'bestvideo[ext=mp4]+bestaudio[ext=m4a]' \
-		--output "%(uploader)s/%(upload_date)s ${resolved_title}.%(extractor)s.%(id)s.%(ext)s" \
-		"${given_url}"
-
-	item_ids+=( "$item_id" )
-done < <(getpocket list "$@" --format $'{item_id}\t{given_url}\t{resolved_title}\n')
-
-
-printf "\n\n\n"
-printf "getpocket delete"
-printf " %q" "${item_ids[@]}"
-printf "\n\n\n"
+cd "$download_folder"
+getpocket list "$@" -d youtube.com -x _videos_not --format $'{resolved_url}\n' | youtube-dl -a -
+rsync --size-only --recursive --partial --progress "${download_folder}/" "${destination_folder}/"
+cd "${destination_folder}/"
+"$selfdir/pocket-videos-delete-downloaded.sh"
