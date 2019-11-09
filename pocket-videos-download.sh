@@ -19,5 +19,19 @@ fi
 cd "$download_folder"
 getpocket list "$@" -d youtube.com -x _videos_not --format $'{resolved_url}\n' | youtube-dl -a -
 rsync --size-only --recursive --partial --progress "${download_folder}/" "${destination_folder}/"
+cd "${download_folder}"
+old_IFS="$IFS"
+IFS=$'\n'
+all_files=( $(find . -type f) )
+IFS="$old_IFS"
+unset old_IFS
+for f in "${all_files[@]}"; do
+	if [ -e "${destination_folder}/$f" ]; then
+		rm -v "${download_folder}/$f"
+	fi
+done
+cd ..
+rmdir "${download_folder}"/*
+rmdir "${download_folder}"
 cd "${destination_folder}/"
 "$selfdir/pocket-videos-delete-downloaded.sh"
