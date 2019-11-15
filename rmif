@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+
+"""
+Usage:
+	{prog} SPEC...
+
+Arguments:
+	SPEC  A three-tuple consisting of the name of the hash algorithm, the expected value, and filename separated by colons. For example sha1:da39a3ee5e6b4b0d3255bfef95601890afd80709:empty.txt
+"""
+
+import sys, locale, asyncio, subprocess, os, hashlib
+# pip install docopt==0.6.2
+import docopt
+
+
+async def main(*, args, prog):
+	locale.setlocale(locale.LC_ALL, "")
+
+	params = docopt.docopt(
+		__doc__.replace("\t", " " * 4).format(prog=os.path.basename(prog)),
+		argv=args,
+		help=True,
+		version=True,
+		options_first=False
+	)
+	specs = params.pop("SPEC")
+	assert not params, params
+
+	pending_tasks = []
+	out = Streamer(sys.stdout)
+
+	for spec in specs:
+		algo, sep, spec = spec.partition(":")
+		assert sep == ":", (algo, sep, spec)
+		hash_expected, sep, path = spec.partition(":")
+		assert sep == ":", (hash_expected, sep, spec)
+		del spec, sep
+		path = os.path.abspath(path)
+
+		#TODO Figure out a way to lock (or at least hide) the file before calculating the hash and eventually unlinking in a cross-platform manner, to prevent the file being changed between the hash calculation and actual unlinking.
+		if (hash_actual := await calculate_file_hash(out, algo, path)).hexdigest() == hash_expected:
+			await out.put(f"Unlinking: {path}\n")
+			os.unlink(path)
+		else:
+			await out.put(f"Leaving alone ({hash_actual.hexdigest()} is not {hash_expected}): {path}\n")
+
+	await asyncio.gather(*pending_tasks)
+	current_task = asyncio.current_task()
+	all_tasks = asyncio.all_tasks()
+	assert {current_task, out._task} == all_tasks, (current_task, all_tasks)
+
+	await out.put(None)
+	await out.wait()
+
+
+async def calculate_file_hash(out, hash_name, file_path):
+	chunk_size = 524_288 # 512 KiB
+	h = hashlib.new("sha1")
+	if not os.path.exists(file_path):
+		return None
+	file_size = os.stat(file_path).st_size
+	file_size_calculated = 0
+	await out.put("\n")
+	with open(file_path, "rb") as fo:
+		while chunk := fo.read(chunk_size):
+			h.update(chunk)
+			file_size_calculated += len(chunk)
+			await out.put(
+				"\x1b[1F",
+				f"Hashing {100 * file_size_calculated / file_size:5.1f}%: {file_path}",
+				"\x1b[0K",
+				"\n",
+			)
+			await out.flush()
+			await asyncio.sleep(0)
+	await out.put("\x1b[1F", "\x1b[0K")
+	await out.flush()
+	return h
+
+
+class Streamer(object):
+	__slots__ = ("_queue", "_fo", "_task", "_flush")
+
+	def __init__(self, fo):
+		self._fo = fo
+		self._queue = asyncio.Queue()
+		self._task = asyncio.create_task(
+			self._streamer_task()
+		)
+		self._flush = object()
+
+	async def put(self, *args):
+		for a in args:
+			await self._queue.put(a)
+
+	async def flush(self):
+		await self.put(self._flush)
+
+	async def wait(self):
+		await self._task
+
+	async def _streamer_task(self):
+		while True:
+			item = await self._queue.get()
+			if item is None:
+				break
+			elif item is self._flush:
+				self._fo.flush()
+			else:
+				self._fo.write(item)
+
+
+def smain(argv=None):
+	if argv is None:
+		argv = sys.argv
+
+	try:
+		if sys.platform == "win32":
+			asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+		return asyncio.run(
+			main(
+				args=argv[1:],
+				prog=argv[0]
+			),
+			debug=False,
+		)
+	except KeyboardInterrupt:
+		print(file=sys.stderr)
+
+
+if __name__ == "__main__":
+	sys.exit(smain())
