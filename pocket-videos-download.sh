@@ -5,7 +5,7 @@ set -o errexit
 selfdir="$(cd "$(dirname "$0")" && pwd)"
 download_folder=~/Downloads/youtube
 destination_folder=/Volumes/Public/Videos/youtube
-destination_git_folder=~/.xgit/vault-public-videos
+destination_git_folder=~/.xgit/videos
 
 test -d "$destination_folder" || {
 	echo 2>&1 "Please mount the destination folder before proceeding."
