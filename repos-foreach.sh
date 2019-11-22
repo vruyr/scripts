@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 
 
+color_ui=auto
+if [ -t 1 ]; then
+	color_ui=always
+fi
+
+
 function main() {
 	if [ $# -eq 0 ]; then
 		set -- echo '$PWD'
@@ -30,11 +36,6 @@ function main() {
 
 
 function incoming() {
-	local color_ui=auto
-	if [ -t 1 ]; then
-		color_ui=always
-	fi
-
 	local url_prefixes=( "$@" )
 
 	at_least_one_not_skipped=
@@ -117,9 +118,9 @@ function incoming() {
 }
 
 
-function find-object() {
+function object-type() {
 	if [ "$#" -ne 1 ]; then
-		echo >&2 "USAGE: repos-foreach.sh find-objects <object_nameish>"
+		echo >&2 "USAGE: repos-foreach.sh object-type <object_nameish>"
 		return 1
 	fi
 	local object_nameish="$1"; shift
@@ -132,6 +133,56 @@ function find-object() {
 	local object_sha="$(git rev-parse "$object_nameish")"
 
 	printf "%s\t%s\t%s\n" "$object_sha" "$object_type" "$(pwd)"
+}
+
+
+temp_output_lines_num_displayed=0
+
+
+function temp_output_lines_printf() {
+	[ -t 1 ] || return
+
+	printf "$@"
+	(( temp_output_lines_num_displayed++ ))
+}
+
+
+function temp_output_lines_clear() {
+	[ -t 1 ] || return
+
+	if [ "$temp_output_lines_num_displayed" -gt 0 ]; then
+		printf '\x1b[%dF\x1b[0J' "$temp_output_lines_num_displayed"
+	fi
+	temp_output_lines_num_displayed=0
+}
+
+
+function find-object() {
+	if [ "$#" -ne 1 ]; then
+		echo >&2 "USAGE: repos-foreach.sh object-type <object_nameish>"
+		return 1
+	fi
+	local object_nameish="$1"; shift
+
+	temp_output_lines_printf 'Searching in %s\n' "$PWD"
+	object_name="$(git rev-parse --quiet --verify "$object_nameish^{object}")"
+	if [ $? -eq 0 -a -n "$object_name" ]; then
+		#TODO The --find-object option is incapable of finding commit trees. Sub-trees are okay.
+		local log_output="$(git -c color.ui="$color_ui" --no-pager log --raw --find-object="$object_name" 2>&1)"
+		temp_output_lines_clear
+	else
+		temp_output_lines_clear
+		return
+	fi
+
+	if [ "$log_output" == "error: unable to resolve '$object_name'" ]; then
+		return
+	fi
+
+	if [ -n "$log_output" ]; then
+		printf '%s\n' "$PWD"
+		printf '\t%s\n' "${log_output//$'\n'/$'\n\t'}"
+	fi
 }
 
 
