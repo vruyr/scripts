@@ -38,3 +38,4 @@ rmdir "${download_folder}"/*
 rmdir "${download_folder}"
 cd "${destination_folder}/"
 "$selfdir/pocket-videos-remove-downloaded.sh"
+git -C "$destination_git_folder" status
