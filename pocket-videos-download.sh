@@ -37,4 +37,4 @@ cd ..
 rmdir "${download_folder}"/*
 rmdir "${download_folder}"
 cd "${destination_folder}/"
-"$selfdir/pocket-videos-delete-downloaded.sh"
+"$selfdir/pocket-videos-remove-downloaded.sh"
