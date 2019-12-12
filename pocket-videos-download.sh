@@ -7,6 +7,19 @@ download_folder=~/Downloads/youtube
 destination_folder=/Volumes/Public/Videos/youtube
 destination_git_folder=~/.xgit/videos
 
+finish_existing=
+while [ $# -ne 0 ]; do
+	case "$1" in
+		"--finish-existing")
+			finish_existing=1
+			shift
+			;;
+		*)
+			echo >&2 "Invalid Argument"
+			exit 1
+	esac
+done
+
 test -d "$destination_folder" || {
 	echo 2>&1 "Please mount the destination folder before proceeding."
 	exit 1
@@ -19,7 +32,9 @@ else
 	mkdir -p "$download_folder"
 fi
 cd "$download_folder"
-getpocket list "$@" -d youtube.com -x _videos_not --format $'{resolved_url}\n' | youtube-dl -a -
+if [ -z "$finish_existing" ]; then
+	getpocket list "$@" -d youtube.com -x _videos_not --format $'{resolved_url}\n' | youtube-dl -a -
+fi
 rsync --size-only --recursive --partial --progress "${download_folder}/" "${destination_folder}/"
 cd "${download_folder}"
 old_IFS="$IFS"
