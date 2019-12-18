@@ -2,6 +2,7 @@
 
 supported_domains=(
 	"youtube.com"
+	"youtu.be"
 )
 
 getpocket list "$@" \

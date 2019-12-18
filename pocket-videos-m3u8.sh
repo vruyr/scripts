@@ -2,6 +2,7 @@
 
 supported_domains=(
 	"youtube.com"
+	"youtu.be"
 )
 
 echo "#EXTM3U"

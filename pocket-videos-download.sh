@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+supported_domains=(
+	"youtube.com"
+	"youtu.be"
+)
+
 set -o errexit
 
 selfdir="$(cd "$(dirname "$0")" && pwd)"
@@ -33,7 +38,7 @@ else
 fi
 cd "$download_folder"
 if [ -z "$finish_existing" ]; then
-	getpocket list "$@" -d youtube.com -x _videos_not --format $'{resolved_url}\n' | youtube-dl -a -
+	getpocket list "$@" $(printf " -d %q" "${supported_domains[@]}") -x _videos_not --format $'{resolved_url}\n' | youtube-dl -a -
 fi
 rsync --size-only --recursive --partial --progress "${download_folder}/" "${destination_folder}/"
 cd "${download_folder}"
