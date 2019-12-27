@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+set -o errexit
+tmpfile=$(mktemp -t stdout-stdin)
+trap "rm \"$tmpfile\"" EXIT
+cat </dev/stdin >"$tmpfile"
+${EDITOR:-${VISUAL:-$(git config --get core.editor)}} "$tmpfile"
+cat "$tmpfile"
