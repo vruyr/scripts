@@ -115,13 +115,15 @@ function main() {
 	rmdir_if_exists "$gitdir/objects/pack/"
 	rmdir_if_exists "$gitdir/objects/"
 
+	rmdir "$gitdir/rr-cache/"
+
 	git config -f "$gitdir/config" --unset core.repositoryformatversion || true
 	git config -f "$gitdir/config" --unset core.filemode                || true
 	git config -f "$gitdir/config" --unset core.bare                    || true
 	git config -f "$gitdir/config" --unset core.logallrefupdates        || true
 	git config -f "$gitdir/config" --unset core.ignorecase              || true
 	git config -f "$gitdir/config" --unset core.precomposeunicode       || true
-	
+
 	git config -f "$gitdir/config" --unset push.default || true
 
 	# TODO Unhardcode this
