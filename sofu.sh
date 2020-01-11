@@ -22,7 +22,7 @@ function main() {
 		shift
 		case "$opt" in
 			"--all")
-				set -- --brew --brew-cask --npm --pyv --macossystem "$@"
+				set -- --brew --brew-cask --npm --pyv --macappstore --macossystem "$@"
 				;;
 			"--brew")
 				homebrew_outdated=1
@@ -47,6 +47,12 @@ function main() {
 				;;
 			"--no-pyv")
 				pyv_outdated=
+				;;
+			"--macappstore"|"--mas")
+				macappstore_outdated=1
+				;;
+			"--no-macappstore"|"--no-mas")
+				macappstore_outdated=
 				;;
 			"--macossystem"|"--system"|"--sys")
 				macossystem_outdated=1
@@ -86,6 +92,10 @@ function main() {
 			echo "--- pyv: $PYV_ROOT_DIR"
 			eval_indent 'show_pyv_updates "$PYV_ROOT_DIR"'
 		fi
+	fi
+	if [ "$macappstore_outdated" ]; then
+		echo "--- Mac App Store"
+		eval_indent 'mas outdated'
 	fi
 	if [ "$macossystem_outdated" ]; then
 		echo "--- macOS System Updates"
