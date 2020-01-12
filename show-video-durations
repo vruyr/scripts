@@ -30,7 +30,7 @@ async def main(*, args, prog):
 
 	log = asyncio.Queue()
 	pending_tasks = []
-	printer_task = asyncio.create_task(
+	printer_task = asyncio.ensure_future(
 		printer(queue=log, fo=sys.stdout)
 	)
 
@@ -52,7 +52,8 @@ async def main(*, args, prog):
 		nonlocal path_durations, files_failed
 		await log.put("\n")
 		while True:
-			if (pfd := await pending_durations.get()) is not None:
+			pfd = await pending_durations.get()
+			if pfd is not None:
 				the_path, the_file, the_duration = pfd
 				file_dir = os.path.dirname(the_file)
 				clear = f"\x1b[{len(path_durations)}F\x1b[0J"
@@ -87,11 +88,11 @@ async def main(*, args, prog):
 
 
 	pending_tasks.append(
-		asyncio.create_task(duration_consumer())
+		asyncio.ensure_future(duration_consumer())
 	)
 	pending_paths = asyncio.Queue()
 	pending_tasks.append(
-		asyncio.create_task(path_consumer(queue_in=pending_paths, queue_out=pending_durations, max_parallel=max_parallel_jobs))
+		asyncio.ensure_future(path_consumer(queue_in=pending_paths, queue_out=pending_durations, max_parallel=max_parallel_jobs))
 	)
 	await walker(paths=paths, queue=pending_paths)
 
@@ -99,9 +100,9 @@ async def main(*, args, prog):
 	await pending_durations.join()
 
 	await asyncio.gather(*pending_tasks)
-	current_task = asyncio.current_task()
-	all_tasks = asyncio.all_tasks()
-	assert {current_task, printer_task} == all_tasks, (current_task, all_tasks)
+	#current_task = asyncio.current_task()
+	#all_tasks = asyncio.all_tasks()
+	#assert {current_task, printer_task} == all_tasks, (current_task, all_tasks)
 
 	await log.put(None)
 	await printer_task
@@ -123,7 +124,8 @@ async def path_consumer(*, queue_in, queue_out, max_parallel):
 	expect_more = True
 	while pending or expect_more:
 		if expect_more:
-			if (pf := await queue_in.get()) is not None:
+			pf = await queue_in.get()
+			if pf is not None:
 				incoming.append(pf)
 				await queue_out.put((*pf, 0))
 				await asyncio.sleep(0)
@@ -131,9 +133,10 @@ async def path_consumer(*, queue_in, queue_out, max_parallel):
 				queue_in.task_done()
 				expect_more = False
 
-		if num_to_add := max(0, max_parallel - len(pending)):
+		num_to_add = max(0, max_parallel - len(pending))
+		if num_to_add:
 			pending.update(
-				asyncio.create_task(do_one(*pf)) for pf in incoming[:num_to_add]
+				asyncio.ensure_future(do_one(*pf)) for pf in incoming[:num_to_add]
 			)
 			incoming = incoming[num_to_add:]
 
@@ -217,12 +220,11 @@ def smain(argv=None):
 		if sys.platform == "win32":
 			asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-		return asyncio.run(
+		return asyncio.get_event_loop().run_until_complete(
 			main(
 				args=argv[1:],
 				prog=argv[0]
-			),
-			debug=False,
+			)
 		)
 	except KeyboardInterrupt:
 		print(file=sys.stderr)
