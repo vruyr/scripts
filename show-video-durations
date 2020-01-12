@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+
+"""
+Usage:
+	{prog} [PATHS...]
+"""
+
+import sys, locale, asyncio, subprocess, os, collections
+# pip install docopt==0.6.2
+import docopt
+
+
+async def main(*, args, prog):
+	locale.setlocale(locale.LC_ALL, "")
+
+	params = docopt.docopt(
+		__doc__.replace("\t", " " * 4).format(prog=os.path.basename(prog)),
+		argv=args,
+		help=True,
+		version=True,
+		options_first=False
+	)
+	paths = params.pop("PATHS")
+	assert not params, params
+
+	log = asyncio.Queue()
+	pending_tasks = []
+	printer_task = asyncio.create_task(
+		printer(queue=log, fo=sys.stdout)
+	)
+
+	if not paths:
+		paths = ["."]
+
+	pending_durations = asyncio.Queue()
+
+	class PathDuration(object):
+		def __init__(self):
+			self.duration = 0
+			self.remaining = 0
+
+	path_durations = collections.OrderedDict()
+	files_failed = collections.OrderedDict()
+
+	async def duration_consumer():
+		nonlocal path_durations, files_failed
+		await log.put("\n")
+		while True:
+			if (pfd := await pending_durations.get()) is not None:
+				the_path, the_file, the_duration = pfd
+				file_dir = os.path.dirname(the_file)
+				clear = f"\x1b[{len(path_durations)}F\x1b[0J"
+
+				if isinstance(the_duration, Exception):
+					files_failed[the_file] = the_duration
+					path_durations[file_dir].remaining -= 1
+				else:
+					if file_dir not in path_durations:
+						path_durations[file_dir] = PathDuration()
+
+					if the_duration == 0:
+						path_durations[file_dir].remaining += 1
+					else:
+						path_durations[file_dir].remaining -= 1
+						path_durations[file_dir].duration += the_duration
+
+					await log.put(
+						clear +
+						"".join(f"{format_seconds(d.duration)} {d.remaining:>3} {p}\n" for p, d in path_durations.items())
+					)
+
+				pending_durations.task_done()
+			else:
+				break
+		await log.put(f"Total: {format_seconds(sum(d.duration for d in path_durations.values()))}\n")
+		if files_failed:
+			await log.put(f"{files_failed}\n")
+
+
+	pending_tasks.append(
+		asyncio.create_task(duration_consumer())
+	)
+	pending_paths = asyncio.Queue()
+	pending_tasks.append(
+		asyncio.create_task(path_consumer(queue_in=pending_paths, queue_out=pending_durations))
+	)
+	await walker(paths=paths, queue=pending_paths)
+
+	await pending_paths.join()
+	await pending_durations.join()
+
+	await asyncio.gather(*pending_tasks)
+	current_task = asyncio.current_task()
+	all_tasks = asyncio.all_tasks()
+	assert {current_task, printer_task} == all_tasks, (current_task, all_tasks)
+
+	await log.put(None)
+	await printer_task
+
+
+async def path_consumer(*, queue_in, queue_out, max_parallel=25):
+	async def do_one(p, f):
+		try:
+			d = await get_video_file_duration(f)
+		except Exception as e:
+			d = e
+		await queue_out.put((p, f, d))
+		queue_in.task_done()
+
+
+	incoming = []
+	pending = set()
+
+	expect_more = True
+	while pending or expect_more:
+		if expect_more:
+			if (pf := await queue_in.get()) is not None:
+				incoming.append(pf)
+				await queue_out.put((*pf, 0))
+				await asyncio.sleep(0)
+			else:
+				queue_in.task_done()
+				expect_more = False
+
+		if num_to_add := max(0, max_parallel - len(pending)):
+			pending.update(
+				asyncio.create_task(do_one(*pf)) for pf in incoming[:num_to_add]
+			)
+			incoming = incoming[num_to_add:]
+
+		done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED, timeout=(0 if expect_more else None))
+
+	await queue_out.put(None)
+
+
+async def walker(*, paths, queue):
+	async for p in walk_paths(*paths):
+		await queue.put(p)
+	await queue.put(None)
+
+
+async def walk_paths(*paths, ignored_files=[".DS_Store", "._.DS_Store"]):
+	paths = list(paths)
+	while paths:
+		p = paths.pop(0)
+		if not os.path.isdir(p):
+			if p in ignored_files:
+				continue
+			yield (p, p)
+		else:
+			for rootdir, dirs, files in os.walk(p, topdown=True):
+				for f in files:
+					if f in ignored_files:
+						continue
+					yield (p, os.path.join(rootdir, f))
+
+
+async def get_video_file_duration(video_file_path):
+	p = await asyncio.create_subprocess_exec(
+		"ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_file_path,
+		shell=False,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.PIPE,
+	)
+	await p.wait()
+	assert p.returncode == 0, (p.returncode, (await p.stderr.read()).decode("UTF-8"))
+	#TODO:vruyr:bugs How do we know it's UTF-8.
+	return float((await p.stdout.read()).decode("UTF-8"))
+
+
+def format_seconds(seconds, *, subsecond=False):
+	assert subsecond == False
+	seconds, subseconds = divmod(seconds, 1)
+	minutes, seconds = divmod(int(seconds), 60)
+	hours, minutes = divmod(minutes, 60)
+	result = ""
+	if hours:
+		result += f"{hours:>3}h"
+	else:
+		result += "    "
+	if result or minutes:
+		if result:
+			result += " "
+		result += f"{minutes:>2}m"
+	if result or seconds:
+		if result:
+			result += " "
+		result += f"{seconds:>2}s"
+	return result
+
+
+async def printer(*, queue, fo):
+	while True:
+		item = await queue.get()
+		if item is None:
+			break
+		if isinstance(item, (list, tuple)):
+			print(*item, file=fo, sep="", end="")
+		else:
+			print(item, file=fo, sep="", end="")
+
+
+def smain(argv=None):
+	if argv is None:
+		argv = sys.argv
+
+	try:
+		if sys.platform == "win32":
+			asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+		return asyncio.run(
+			main(
+				args=argv[1:],
+				prog=argv[0]
+			),
+			debug=False,
+		)
+	except KeyboardInterrupt:
+		print(file=sys.stderr)
+
+
+if __name__ == "__main__":
+	sys.exit(smain())
