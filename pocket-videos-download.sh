@@ -30,6 +30,11 @@ test -d "$destination_folder" || {
 	exit 1
 }
 
+test -z "$(git -C "$destination_git_folder" status --porcelain=v2)" || {
+	echo 2>&1 "The repository is dirty."
+	exit 1
+}
+
 if [ -e "$download_folder" ]; then
 	echo 2>&1 "WARNING: Reusing an already existing download folder:"
 	tree 2>&1 -aNF "${download_folder}"
