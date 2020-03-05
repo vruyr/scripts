@@ -12,11 +12,16 @@ download_folder=~/Downloads/youtube
 destination_folder=/Volumes/Public/Videos/youtube
 destination_git_folder=~/.xgit/videos
 
+okay_dirty=
 finish_existing=
 while [ $# -ne 0 ]; do
 	case "$1" in
 		"--finish-existing")
 			finish_existing=1
+			shift
+			;;
+		"--okay-dirty")
+			okay_dirty=1
 			shift
 			;;
 		*)
@@ -30,7 +35,7 @@ test -d "$destination_folder" || {
 	exit 1
 }
 
-test -z "$(git -C "$destination_git_folder" status --porcelain=v2)" || {
+test "$okay_dirty" == 1 -o -z "$(git -C "$destination_git_folder" status --porcelain=v2)" || {
 	echo 2>&1 "The repository is dirty."
 	exit 1
 }
