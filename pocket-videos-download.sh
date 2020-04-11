@@ -48,7 +48,13 @@ else
 fi
 cd "$download_folder"
 if [ -z "$finish_existing" ]; then
-	getpocket list "$@" $(printf " -d %q" "${supported_domains[@]}") -x _videos_not --format $'{resolved_url}\n' | youtube-dl -a -
+	declare -a urls=(
+		$(getpocket list "$@" $(printf " -d %q" "${supported_domains[@]}") -x _videos_not --format $'{resolved_url}\n')
+	)
+	declare -p urls
+	if [ "${#urls[@]}" -gt 0 ]; then
+		printf "%s\n" "${urls[@]}" | youtube-dl -i -a - || true
+	fi
 fi
 rsync --size-only --recursive --partial --progress "${download_folder}/" "${destination_folder}/"
 cd "${download_folder}"
@@ -64,8 +70,7 @@ for f in "${all_files[@]}"; do
 	fi
 done
 cd ..
-rmdir "${download_folder}"/*
-rmdir "${download_folder}"
+rrmdir "${download_folder}"
 cd "${destination_folder}/"
 "$selfdir/pocket-videos-remove-downloaded.sh"
 git -C "$destination_git_folder" status
