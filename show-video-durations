@@ -2,7 +2,11 @@
 
 """
 Usage:
-	{prog} [PATHS...]
+	{prog} [options] [PATHS...]
+
+Options:
+	--jobs, -j NUMBER  Maximum parallel jobs.
+	                   [default: 25]
 """
 
 import sys, locale, asyncio, subprocess, os, collections
@@ -21,6 +25,7 @@ async def main(*, args, prog):
 		options_first=False
 	)
 	paths = params.pop("PATHS")
+	max_parallel_jobs = int(params.pop("--jobs"))
 	assert not params, params
 
 	log = asyncio.Queue()
@@ -37,6 +42,7 @@ async def main(*, args, prog):
 	class PathDuration(object):
 		def __init__(self):
 			self.duration = 0
+			self.count = 0
 			self.remaining = 0
 
 	path_durations = collections.OrderedDict()
@@ -59,14 +65,17 @@ async def main(*, args, prog):
 						path_durations[file_dir] = PathDuration()
 
 					if the_duration == 0:
+						path_durations[file_dir].count += 1
 						path_durations[file_dir].remaining += 1
 					else:
 						path_durations[file_dir].remaining -= 1
 						path_durations[file_dir].duration += the_duration
 
+					duration_tuples = list(path_durations.items())
+					duration_tuples.sort(key=(lambda k: (k[1].duration, k[1].count)))
 					await log.put(
 						clear +
-						"".join(f"{format_seconds(d.duration)} {d.remaining:>3} {p}\n" for p, d in path_durations.items())
+						"".join(f"{format_seconds(d.duration)} {(d.remaining if d.remaining else ''):>3} {d.count:>3} {p}\n" for p, d in duration_tuples)
 					)
 
 				pending_durations.task_done()
@@ -82,7 +91,7 @@ async def main(*, args, prog):
 	)
 	pending_paths = asyncio.Queue()
 	pending_tasks.append(
-		asyncio.create_task(path_consumer(queue_in=pending_paths, queue_out=pending_durations))
+		asyncio.create_task(path_consumer(queue_in=pending_paths, queue_out=pending_durations, max_parallel=max_parallel_jobs))
 	)
 	await walker(paths=paths, queue=pending_paths)
 
@@ -98,7 +107,7 @@ async def main(*, args, prog):
 	await printer_task
 
 
-async def path_consumer(*, queue_in, queue_out, max_parallel=25):
+async def path_consumer(*, queue_in, queue_out, max_parallel):
 	async def do_one(p, f):
 		try:
 			d = await get_video_file_duration(f)
