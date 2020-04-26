@@ -5,8 +5,13 @@ Usage:
 	{prog} [options] [PATHS...]
 
 Options:
-	--jobs, -j NUMBER  Maximum parallel jobs.
-	                   [default: 25]
+	--jobs, -j NUMBER           Maximum parallel jobs.
+	                            [default: 25]
+	--playback-rate, -r NUMBER  Calculate duration as if played at specified rate.
+	                            [default: 1.0]
+	--ffprobe-path PATH         Path to ffprobe executable to be used.
+	                            [default: ffprobe]
+	--cache-path PATH           Path to file containing cached durations from previous runs.
 """
 
 import sys, locale, asyncio, subprocess, os, collections
@@ -26,6 +31,10 @@ async def main(*, args, prog):
 	)
 	paths = params.pop("PATHS")
 	max_parallel_jobs = int(params.pop("--jobs"))
+	playback_rate = float(params.pop("--playback-rate"))
+	ffprobe_path = params.pop("--ffprobe-path")
+	cache_path = params.pop("--cache-path")
+	assert not cache_path, "--cache-path is not implemented"
 	assert not params, params
 
 	log = asyncio.Queue()
@@ -76,13 +85,13 @@ async def main(*, args, prog):
 					duration_tuples.sort(key=(lambda k: (k[1].duration, k[1].count)))
 					await log.put(
 						clear +
-						"".join(f"{format_seconds(d.duration)} {(d.remaining if d.remaining else ''):>3} {d.count:>3} {p}\n" for p, d in duration_tuples)
+						"".join(f"{format_seconds(d.duration, speed=playback_rate)} {(d.remaining if d.remaining else ''):>3} {d.count:>3} {p}\n" for p, d in duration_tuples)
 					)
 
 				pending_durations.task_done()
 			else:
 				break
-		await log.put(f"Total: {format_seconds(sum(d.duration for d in path_durations.values()))}\n")
+		await log.put(f"Total: {format_seconds(sum(d.duration for d in path_durations.values()), speed=playback_rate)}\n")
 		if files_failed:
 			await log.put(f"{files_failed}\n")
 
@@ -92,7 +101,12 @@ async def main(*, args, prog):
 	)
 	pending_paths = asyncio.Queue()
 	pending_tasks.append(
-		asyncio.ensure_future(path_consumer(queue_in=pending_paths, queue_out=pending_durations, max_parallel=max_parallel_jobs))
+		asyncio.ensure_future(path_consumer(
+			queue_in=pending_paths,
+			queue_out=pending_durations,
+			max_parallel=max_parallel_jobs,
+			ffprobe_path=ffprobe_path,
+		))
 	)
 	await walker(paths=paths, queue=pending_paths)
 
@@ -108,10 +122,10 @@ async def main(*, args, prog):
 	await printer_task
 
 
-async def path_consumer(*, queue_in, queue_out, max_parallel):
+async def path_consumer(*, queue_in, queue_out, max_parallel, ffprobe_path):
 	async def do_one(p, f):
 		try:
-			d = await get_video_file_duration(f)
+			d = await get_video_file_duration(f, ffprobe_path=ffprobe_path)
 		except Exception as e:
 			d = e
 		await queue_out.put((p, f, d))
@@ -167,9 +181,9 @@ async def walk_paths(*paths, ignored_files=[".DS_Store", "._.DS_Store"]):
 					yield (p, os.path.join(rootdir, f))
 
 
-async def get_video_file_duration(video_file_path):
+async def get_video_file_duration(video_file_path, *, ffprobe_path):
 	p = await asyncio.create_subprocess_exec(
-		"ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_file_path,
+		ffprobe_path, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_file_path,
 		shell=False,
 		stdout=subprocess.PIPE,
 		stderr=subprocess.PIPE,
@@ -180,7 +194,8 @@ async def get_video_file_duration(video_file_path):
 	return float((await p.stdout.read()).decode("UTF-8"))
 
 
-def format_seconds(seconds, *, subsecond=False):
+def format_seconds(seconds, *, subsecond=False, speed=1.0):
+	seconds = seconds / speed
 	assert subsecond == False
 	seconds, subseconds = divmod(seconds, 1)
 	minutes, seconds = divmod(int(seconds), 60)
