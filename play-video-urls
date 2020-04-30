@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+set -o errexit
+
+trap "echo FAILURE" ERR
+
+thedir="$(mktemp -d -t video-urls-to-m3u)"
+thefile="$thedir/playlist.m3u8"
+trap 'rm "$thefile"; rmdir "$thedir"' EXIT
+
+(
+	echo '#EXTM3U'
+	echo ''
+
+	youtube-dl --dump-single-json --format=best "$@" | jq --raw-output -f /dev/fd/3 3<<-EOT
+		"#EXTINF:" + (.duration|tostring) + " " +
+		"cover=\"" + .thumbnail   + "\"" + " " +
+		"webpage_url=\"" + .webpage_url + "\"" + " " +
+		"channel_url=\"" + .channel_url + "\"" + " " +
+		"," +
+		.uploader + " - " + .upload_date + " " + .title +
+		"\n" +
+		.url +
+		"\n"
+	EOT
+) >"$thefile"
+open "$thefile"
+sleep 2s
