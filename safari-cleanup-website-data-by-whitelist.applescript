@@ -4,7 +4,8 @@ on run
 	set whitelistFilePath to (POSIX path of (path to home folder)) & "/.config/safari-data-whitelist.txt"
 	set websiteOriginWhitelist to splitString(read POSIX file whitelistFilePath, "
 ")
-	
+	error "Latest version of Safari changed UI hierarchy and broke this script."
+
 	activate application "/Applications/Safari.app"
 	delay 1
 	tell application "System Events"
