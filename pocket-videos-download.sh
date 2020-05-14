@@ -74,3 +74,7 @@ rrmdir "${download_folder}"
 cd "${destination_folder}/"
 "$selfdir/pocket-videos-remove-downloaded.sh"
 git -C "$destination_git_folder" status
+if [ "$okay_dirty" != 1 ]; then
+	git -C "$destination_git_folder" commit --allow-empty-message --no-edit
+	git -C "$destination_git_folder" show HEAD --name-status
+fi
