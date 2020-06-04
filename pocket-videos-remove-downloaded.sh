@@ -6,7 +6,7 @@ supported_domains=(
 	"youtu.be"
 )
 youtube_ids=($(
-	for f in */*; do p='\.youtube\.([^.]+)\.[^.]+'; [[ "$f" =~ $p ]] && echo ${BASH_REMATCH[1]}; done
+	for f in * */*; do p='\.youtube\.([^.]+)\.[^.]+'; [[ "$f" =~ $p ]] && echo ${BASH_REMATCH[1]}; done
 ))
 item_ids=(
 	$(
