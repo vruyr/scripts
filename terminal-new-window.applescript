@@ -1,7 +1,10 @@
 #!/usr/bin/env osascript -l AppleScript
 
 tell application "System Events"
-	set theApp to first application process whose bundle identifier is "com.apple.Terminal"
-	tell first menu item of menu "New Window" of menu item "New Window" of menu "Shell" of menu bar item "Shell" of menu bar 1 of theApp to click
+	set pp to application processes whose bundle identifier is "com.apple.Terminal"
+	if (count of pp) is not 0 then
+		set theApp to first item of pp
+		tell first menu item of menu "New Window" of menu item "New Window" of menu "Shell" of menu bar item "Shell" of menu bar 1 of theApp to click
+	end if
 end tell
 tell application "Terminal" to activate
