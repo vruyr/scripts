@@ -165,7 +165,7 @@ async def walker(*, paths, queue):
 	await queue.put(None)
 
 
-async def walk_paths(*paths, ignored_files=[".DS_Store", "._.DS_Store"]):
+async def walk_paths(*paths, ignored_files=[".DS_Store", "._.DS_Store"], ignored_dirs=[".meta"]):
 	paths = list(paths)
 	while paths:
 		p = paths.pop(0)
@@ -174,7 +174,10 @@ async def walk_paths(*paths, ignored_files=[".DS_Store", "._.DS_Store"]):
 				continue
 			yield (p, p)
 		else:
+			if p in ignored_dirs:
+				continue
 			for rootdir, dirs, files in os.walk(p, topdown=True):
+				dirs[:] = [d for d in dirs if d not in ignored_dirs]
 				for f in files:
 					if f in ignored_files:
 						continue
