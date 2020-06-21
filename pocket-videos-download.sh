@@ -56,11 +56,17 @@ if [ -z "$finish_existing" ]; then
 		printf "%s\n" "${urls[@]}" | youtube-dl -i -a - || true
 	fi
 fi
+unrecognized_files="$(find . -type f -not -name '*.mp4' -not -name .DS_Store )"
+if [ -n "$unrecognized_files" ]; then
+	echo "UNRECOGNIZED FILES:"
+	echo "$unrecognized_files"
+	exit 1
+fi
 rsync --size-only --recursive --partial --progress "${download_folder}/" "${destination_folder}/"
 cd "${download_folder}"
 old_IFS="$IFS"
 IFS=$'\n'
-all_files=( $(find . -type f) )
+all_files=( $(find . -type f -not -name .DS_Store) )
 IFS="$old_IFS"
 unset old_IFS
 for f in "${all_files[@]}"; do
