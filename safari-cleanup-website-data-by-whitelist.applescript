@@ -4,8 +4,10 @@ on run
 	set whitelistFilePath to (POSIX path of (path to home folder)) & "/.config/safari-data-whitelist.txt"
 	set websiteOriginWhitelist to splitString(read POSIX file whitelistFilePath, "
 ")
-	error "Latest version of Safari changed UI hierarchy and broke this script."
-
+	set ansiGreen to ansiEscape("[32m")
+	set ansiRed to ansiEscape("[31m")
+	set ansiReset to ansiEscape("[0m")
+	
 	activate application "/Applications/Safari.app"
 	delay 1
 	tell application "System Events"
@@ -40,7 +42,10 @@ on run
 				set numToRemove to 0
 				
 				repeat with r in every row of websitesTable
-					set websiteOrigin to my getOriginFromWebsiteDataDescription(description of UI element 1 of r)
+					if (count of UI elements of r) is not 1 then
+						error "Unexpected UI element structure."
+					end if
+					set websiteOrigin to my getOriginFromWebsiteDataDescription(name of UI element 1 of r)
 					set mustRemove to true
 					repeat with o in websiteOriginWhitelist
 						if websiteOrigin is o as string then
@@ -49,10 +54,10 @@ on run
 						end if
 					end repeat
 					if mustRemove then
-						log "Removing: " & websiteOrigin
+						log ansiRed & "Removing: " & websiteOrigin & ansiReset
 						set numToRemove to numToRemove + 1
 					else
-						log "Keeping : " & websiteOrigin
+						log ansiGreen & "Keeping:  " & websiteOrigin & ansiReset
 						set selected of r to false
 					end if
 				end repeat
@@ -69,7 +74,7 @@ on run
 					log "Remaining:"
 					set websitesTable to table 1 of scroll area 1 of websiteDataSheet
 					repeat with r in every row of websitesTable
-						log "	" & my getOriginFromWebsiteDataDescription(description of UI element 1 of r)
+						log "	" & my getOriginFromWebsiteDataDescription(name of UI element 1 of r)
 					end repeat
 				else
 					log "Nothing to remove."
@@ -87,6 +92,9 @@ on run
 	return
 end run
 
+on ansiEscape(code)
+	return (ASCII character 27) & code
+end ansiEscape
 
 on getOriginFromWebsiteDataDescription(descriptionString)
 	set websiteDataTypeNames to {" Cache", " Cookies", " Databases", " Local Storage", " HSTS Policy", ","}
