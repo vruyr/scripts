@@ -12,6 +12,8 @@ import sys, locale, asyncio, subprocess, os, re, shlex
 # pip install docopt==0.6.2
 import docopt
 
+#TODO Decompose remote.<name>.wtpp-ssh-command to a reusable part and repo-specific part.
+#TODO Deprecate remote.<name>.wtpp-ssh-host in favor of parsing the hostname from url.
 
 async def main(*, args, prog):
 	locale.setlocale(locale.LC_ALL, "")
