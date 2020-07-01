@@ -21,7 +21,7 @@ do
 		continue
 	}
 
-	test $(find "$d" -not -type d -not -type f | wc -l) -ne 0 && {
+	test "$(find "$d" -not -type d -not -type f | wc -l)" -ne 0 && {
 		echo "Error: I can only handle files and folder. It seems '$d' contains something else."
 		continue
 	}
