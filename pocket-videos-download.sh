@@ -56,6 +56,7 @@ if [ -z "$finish_existing" ]; then
 		printf "%s\n" "${urls[@]}" | youtube-dl -i -a - || true
 	fi
 fi
+find . -type f \( -name '*.webp' -o -name '*.jpg' \) -exec pocket-videos-finish-embedding-thumbnails.sh {} +
 unrecognized_files="$(find . -type f -not -name '*.mp4' -not -name .DS_Store )"
 if [ -n "$unrecognized_files" ]; then
 	echo "UNRECOGNIZED FILES:"
@@ -79,6 +80,15 @@ cd ..
 rrmdir "${download_folder}"
 cd "${destination_folder}/"
 "$selfdir/pocket-videos-remove-downloaded.sh"
+
+p='^[0-9]{8} \[([^]]+)\] .*'
+for f in *; do
+	[[ "$f" =~ $p ]] || continue
+	d="${BASH_REMATCH[1]}"
+	[ -d "$d" ] || continue
+	git mv --force "$f" "$d/"
+done
+
 git -C "$destination_git_folder" status
 if [ "$okay_dirty" != 1 ]; then
 	git -C "$destination_git_folder" commit --allow-empty-message --no-edit
