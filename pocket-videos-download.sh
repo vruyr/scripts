@@ -91,6 +91,12 @@ done
 
 git -C "$destination_git_folder" status
 if [ "$okay_dirty" != 1 ]; then
-	git -C "$destination_git_folder" commit --allow-empty-message --no-edit
-	git -C "$destination_git_folder" show HEAD --name-status
+	diff_index_expected=":000000 100644 0000000000000000000000000000000000000000 e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 A"
+	diff_index="$(git -C "$destination_git_folder" diff-index --cached --raw HEAD | cut -d $'\t' -f 1 | sort -u)"
+	if [ "$diff_index" == "$diff_index_expected" ]; then
+		git -C "$destination_git_folder" commit --allow-empty-message --no-edit
+		git -C "$destination_git_folder" show HEAD --name-status
+	else
+		echo "WARNING: Refusing to commit anything to git as some content is not trimmed to empty files."
+	fi
 fi
