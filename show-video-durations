@@ -165,7 +165,21 @@ async def walker(*, paths, queue):
 	await queue.put(None)
 
 
-async def walk_paths(*paths, ignored_files=[".DS_Store", "._.DS_Store"], ignored_dirs=[".meta"]):
+DEFAULT_IGNORED_FILES = [
+	".DS_Store",
+	"._.DS_Store",
+	"favorite.jpg",
+	"._favorite.jpg",
+	"favorite-atv.jpg",
+	"._favorite-atv.jpg",
+	"folder.jpg",
+	"._folder.jpg",
+	"folder-atv.jpg",
+	"._folder-atv.jpg",
+]
+
+
+async def walk_paths(*paths, ignored_files=DEFAULT_IGNORED_FILES, ignored_dirs=[".meta"]):
 	paths = list(paths)
 	while paths:
 		p = paths.pop(0)
