@@ -85,7 +85,7 @@ async def main(*, args, prog):
 					duration_tuples.sort(key=(lambda k: (k[1].duration, k[1].count)))
 					await log.put(
 						clear +
-						"".join(f"{format_seconds(d.duration, speed=playback_rate)} {d.count:>3} {format_remaining(d.remaining)}{p}\n" for p, d in duration_tuples)
+						"".join(f"{format_seconds(d.duration, speed=playback_rate)} {d.count:>3} {format_remaining(d.remaining)}{os.path.normpath(p)}\n" for p, d in duration_tuples)
 					)
 
 				pending_durations.task_done()
