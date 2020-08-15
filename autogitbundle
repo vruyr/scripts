@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+
+"""
+Usage:
+	{prog}
+"""
+
+import sys, locale, asyncio, subprocess, os, pathlib, re
+# pip install docopt==0.6.2
+import docopt
+
+
+async def main(*, args, prog):
+	locale.setlocale(locale.LC_ALL, "")
+
+	params = docopt.docopt(
+		__doc__.replace("\t", " " * 4).format(prog=os.path.basename(prog)),
+		argv=args,
+		help=True,
+		version=True,
+		options_first=False
+	)
+	assert not params, params
+
+	log = asyncio.Queue()
+	pending_tasks = []
+	printer_task = asyncio.create_task(
+		printer(queue=log, fo=sys.stdout)
+	)
+
+	await create_bundles(log=log)
+
+	await asyncio.gather(*pending_tasks)
+	current_task = asyncio.current_task()
+	all_tasks = asyncio.all_tasks()
+	assert {current_task, printer_task} == all_tasks, (current_task, all_tasks)
+
+	await log.put(None)
+	await printer_task
+
+
+async def create_bundles(*, log):
+	"""
+	Example configuration:
+		[autogitbundle "~/Sync/zzz-git-bundles"]
+			prefix = ~/Sync/zzz-git-vruyr-
+			suffix = software/scripts.git
+			suffix = software/repos.git
+			suffix = software/metasnap.git
+
+	Will generate:
+		~/Sync/zzz-git-bundles/software/scripts.gitbundle
+		~/Sync/zzz-git-bundles/software/repos.gitbundle
+		~/Sync/zzz-git-bundles/software/metasnap.gitbundle
+	"""
+
+	git = Git(git_path="git", output_queue=log)
+
+	repo_path = pathlib.Path.cwd()
+
+	repo_path_prefix = None
+	repo_path_suffix = None
+	async for bundle_dir, key, value in git.config_sections("autogitbundle"):
+		if bundle_dir is None:
+			bundle_dir = "."
+		bundle_dir = repo_path.parent / os.path.expanduser(bundle_dir)
+
+		if key == "prefix":
+			repo_path_prefix = os.path.expanduser(value)
+			continue
+		elif key == "suffix":
+			repo_path_suffix = value
+		else:
+			await log.put(f"Unknown config key {key}")
+			continue
+
+		if not pathlib.Path(repo_path_prefix + repo_path_suffix).samefile(repo_path):
+			continue
+
+		bundle_path = bundle_dir / (strip_suffix(repo_path_suffix, ".git") + ".gitbundle")
+
+		bundle_path.parent.mkdir(parents=True, exist_ok=True)
+		await log.put(f"Creating bundle {bundle_path}")
+		await git.cmd("bundle", "create", bundle_path, "--all", stdout=False)
+
+
+class Git(object):
+	def __init__(self, *, output_queue, git_path, encoding="UTF-8"):
+		self._output = output_queue
+		self._git_path = git_path
+		self._encoding = encoding
+
+	async def cmd(self, *args, stdin_data=None, stdout=True, stderr=True, decode=False):
+		if isinstance(stdin_data, str):
+			stdin_data = stdin_data.encode(self._encoding)
+		elif stdin_data is None:
+			stdin_data = b""
+		assert isinstance(stdin_data, bytes)
+
+		env = dict(os.environ)
+		env["GIT_TERMINAL_PROMPT"] = "0"
+		env["GIT_ASKPASS"] = "true"
+
+		p = await asyncio.create_subprocess_exec(
+			self._git_path, *args,
+			stdin=subprocess.PIPE,
+			stdout=(subprocess.PIPE if stdout else None),
+			stderr=(subprocess.PIPE if stderr else None),
+			env=env,
+		)
+		stdout_bytes, stderr_bytes = await p.communicate(input=stdin_data)
+		assert stdout_bytes is None or isinstance(stdout_bytes, bytes), (stdout_bytes,)
+		assert stderr_bytes is None or isinstance(stderr_bytes, bytes), (stderr_bytes)
+		if stderr_bytes:
+			raise RuntimeError(f"git command {args} produced stderr output - {stderr_bytes}")
+		return stdout_bytes.decode(self._encoding) if decode else stdout_bytes
+
+	async def config(self, *args, decode=True, single=True):
+		out = (await self.cmd("config", "--null", *args, decode=False)).split(b"\0")
+		assert out[-1] == b""
+		del out[-1]
+		out = [c.decode(self._encoding) for c in out] if decode else out
+		if single:
+			assert len(out) == 1, (out,)
+			out = out[0]
+		return out
+
+	async def config_sections(self, section_name):
+		out = await self.config("--get-regexp", re.escape(section_name) + r"\..*", single=False)
+		for c in out:
+			(section, middle, key), value = self._split_config_entry(c)
+			assert section == section_name, section
+			yield (middle, key, value)
+
+	_config_entry_key_pattern = re.compile(r"^([^.]+)\.(?:(.*)\.)?([^.]+)$")
+
+	def _split_config_entry(self, entry):
+		key, value = entry.split("\n", maxsplit=1)
+		m = self._config_entry_key_pattern.match(key)
+		if m is None:
+			raise ValueError(f"Got an invalid config key - {repr(key)}")
+		return (m.groups(), value)
+
+
+def strip_suffix(s, suffix):
+	return s[:-len(suffix)] if s.endswith(suffix) else s
+
+
+async def printer(*, queue, fo):
+	while True:
+		item = await queue.get()
+		if item is None:
+			break
+		if isinstance(item, (list, tuple)):
+			print(*item, file=fo)
+		else:
+			print(item, file=fo)
+
+
+def smain(argv=None):
+	if argv is None:
+		argv = sys.argv
+
+	try:
+		if sys.platform == "win32":
+			asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+		return asyncio.run(
+			main(
+				args=argv[1:],
+				prog=argv[0]
+			),
+			debug=False,
+		)
+	except KeyboardInterrupt:
+		print(file=sys.stderr)
+
+
+if __name__ == "__main__":
+	sys.exit(smain())
