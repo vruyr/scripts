@@ -13,7 +13,7 @@ fi
 for thumbnail_orig in "$@"; do
 	echo "$thumbnail_orig"
 	if [ "$(git rev-parse --is-inside-work-tree)" == "true" ]; then
-		git restore -s HEAD -S -- "$thumbnail_orig"
+		git restore -s HEAD -S -- "$thumbnail_orig" || true
 	fi
 	filename_base="${thumbnail_orig%.*}"
 	filename_video="$filename_base.mp4"
