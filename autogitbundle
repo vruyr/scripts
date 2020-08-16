@@ -81,7 +81,7 @@ async def create_bundles(*, log):
 
 		bundle_path.parent.mkdir(parents=True, exist_ok=True)
 		await log.put(f"Creating bundle {bundle_path}")
-		await git.cmd("bundle", "create", bundle_path, "--all", stdout=False)
+		await git.cmd("bundle", "create", str(bundle_path), "--all", stdout=False)
 
 
 class Git(object):
