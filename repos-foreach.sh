@@ -45,6 +45,10 @@ function main() {
 function incoming() {
 	local url_prefixes=( "$@" )
 
+	if [ "${PWD}" != "${PWD%/.git}" ]; then
+		cd ..
+	fi
+
 	at_least_one_not_skipped=
 	at_least_one_skipped=
 	output_messages=()
