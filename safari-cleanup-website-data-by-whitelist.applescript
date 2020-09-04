@@ -4,9 +4,12 @@ on run
 	set whitelistFilePath to (POSIX path of (path to home folder)) & "/.config/safari-data-whitelist.txt"
 	set websiteOriginWhitelist to splitString(read POSIX file whitelistFilePath, "
 ")
-	set ansiGreen to ansiEscape("[32m")
 	set ansiRed to ansiEscape("[31m")
+	set ansiGreen to ansiEscape("[32m")
+	set ansiYellow to ansiEscape("[33m")
 	set ansiReset to ansiEscape("[0m")
+	
+	set websiteOriginAlignWidth to 38
 	
 	activate application "/Applications/Safari.app"
 	delay 1
@@ -45,6 +48,8 @@ on run
 					if (count of UI elements of r) is not 1 then
 						error "Unexpected UI element structure."
 					end if
+					set websiteOrigin to value of static text 1 of UI element 1 of r
+					set websiteDataTypes to value of static text 2 of UI element 1 of r
 					set websiteOrigin to my getOriginFromWebsiteDataDescription(name of UI element 1 of r)
 					set mustRemove to true
 					repeat with o in websiteOriginWhitelist
@@ -54,10 +59,15 @@ on run
 						end if
 					end repeat
 					if mustRemove then
-						log ansiRed & "Removing: " & websiteOrigin & ansiReset
+						if websiteDataTypes = "Cache" then
+							set theColor to ansiYellow
+						else
+							set theColor to ansiRed
+						end if
+						log theColor & "Removing: " & my ljust(websiteOrigin, websiteOriginAlignWidth) & " " & websiteDataTypes & ansiReset
 						set numToRemove to numToRemove + 1
 					else
-						log ansiGreen & "Keeping:  " & websiteOrigin & ansiReset
+						log ansiGreen & "Keeping:  " & my ljust(websiteOrigin, websiteOriginAlignWidth) & " " & websiteDataTypes & ansiReset
 						set selected of r to false
 					end if
 				end repeat
@@ -74,7 +84,9 @@ on run
 					log "Remaining:"
 					set websitesTable to table 1 of scroll area 1 of websiteDataSheet
 					repeat with r in every row of websitesTable
-						log "	" & my getOriginFromWebsiteDataDescription(name of UI element 1 of r)
+						set websiteOrigin to value of static text 1 of UI element 1 of r
+						set websiteDataTypes to value of static text 2 of UI element 1 of r
+						log "	" & my ljust(websiteOrigin, 40) & " " & websiteDataTypes
 					end repeat
 				else
 					log "Nothing to remove."
@@ -112,6 +124,16 @@ on getOriginFromWebsiteDataDescription(descriptionString)
 	end repeat
 	return theResult
 end getOriginFromWebsiteDataDescription
+
+
+on ljust(theString, theLength)
+	if theLength < length of theString then
+		set theLength to length of theString
+	end if
+	set theResult to theString & "                                                                                                    "
+	set theResult to characters 1 thru theLength of theResult as string
+	return theResult
+end ljust
 
 
 on splitString(theString, theDelimiter)
