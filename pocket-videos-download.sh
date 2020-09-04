@@ -85,8 +85,15 @@ p='^[0-9]{8} \[([^]]+)\] .*'
 for f in *; do
 	[[ "$f" =~ $p ]] || continue
 	d="${BASH_REMATCH[1]}"
-	[ -d "$d" ] || continue
-	git mv --force "$f" "$d/"
+	if [ -d "$d" ]; then
+		git mv --force "$f" "$d/"
+	elif [ -f ".routes/$d" ]; then
+		dd="$(cat ".routes/$d")"
+		if [ -n "$dd" ]; then
+			mkdir -p "$dd"
+			git mv --force "$f" "$dd/"
+		fi
+	fi
 done
 
 git -C "$destination_git_folder" status
