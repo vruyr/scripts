@@ -42,6 +42,8 @@ def align_columns(*, text, column_patterns):
 
 
 def calculate_columns_widths(rows):
+	if not rows:
+		return []
 	return list(functools.reduce(
 		lambda c1, c2: [max(x) for x in itertools.zip_longest(c1, c2, fillvalue=0)],
 		([len(c) for c in r] for r in rows)
@@ -65,7 +67,7 @@ def split_columns(*, text, column_patterns):
 
 
 def ends_with_line_sep(s):
-	return s != s.splitlines(keepends=False)[-1]
+	return s and s != s.splitlines(keepends=False)[-1]
 
 
 def smain(argv=None):
