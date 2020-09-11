@@ -179,7 +179,9 @@ function find-object() {
 	object_name="$(git rev-parse --quiet --verify "$object_nameish^{object}")"
 	if [ $? -eq 0 -a -n "$object_name" ]; then
 		#TODO The --find-object option is incapable of finding commit trees. Sub-trees are okay.
-		local log_output="$(git -c color.ui="$color_ui" --no-pager log --raw --find-object="$object_name" 2>&1)"
+		local log_output=""
+		log_output+="$(git cat-file -t "$object_name")"$'\n'
+		log_output+="$(git -c color.ui="$color_ui" --no-pager log --raw --find-object="$object_name" 2>&1)"
 		temp_output_lines_clear
 	else
 		temp_output_lines_clear
