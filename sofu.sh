@@ -101,11 +101,11 @@ function main() {
 		fi
 	fi
 	if [ "$homebrew_outdated" ]; then
-		echo "--- brew outdated"
+		echo "--- brew outdated --formula"
 		eval_indent 'brew outdated --formula --verbose'
 	fi
 	if [ "$homebrew_cask_outdated" ]; then
-		echo "--- brew cask outdated"
+		echo "--- brew outdated --cask"
 		eval_indent 'brew outdated --cask --verbose --greedy'
 	fi
 	if [ "$homebrew_bundle_cleanup" ]; then
