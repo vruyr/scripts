@@ -21,7 +21,7 @@ function main() {
 
 	local r
 	for r in "${all_repos[@]}"; do
-		r="$(cd "$HOME" && cd "$r" && pwd)"
+		r="$(cd "$HOME" && cd "$(git --git-dir "$r" rev-parse --git-path .)" && pwd)"
 		(
 			local curdir
 			if [ "$(git -C "$r" --git-dir "$r" config --get --bool core.bare)" == "false" ]; then
