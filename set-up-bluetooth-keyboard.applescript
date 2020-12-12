@@ -1,4 +1,6 @@
 #!/usr/bin/env osascript -l AppleScript
+#:AppBundleName: Set Up Bluetooth Keyboard.app
+#:CFBundleIdentifier: com.vruyr.set-up-bluetooth-keyboard
 
 tell application "System Preferences"
 	activate

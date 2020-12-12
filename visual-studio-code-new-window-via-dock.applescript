@@ -1,4 +1,7 @@
 #!/usr/bin/env osascript -l AppleScript
+#:AppBundleName: Visual Studio Code New Window via Dock.app
+#:CFBundleIdentifier: com.vruyr.visual-studio-code-new-window-via-dock
+
 
 tell application "System Events"
 	tell application process "Dock"

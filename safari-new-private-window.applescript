@@ -1,4 +1,6 @@
 #!/usr/bin/env osascript -l AppleScript
+#:AppBundleName: Safari New Private Window.app
+#:CFBundleIdentifier: com.vruyr.safari-new-private-window
 
 tell application "System Events"
 	tell application process "Safari"

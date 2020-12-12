@@ -1,4 +1,6 @@
 #!/usr/bin/env osascript -l AppleScript
+#:AppBundleName: Terminal New Window.app
+#:CFBundleIdentifier: com.vruyr.terminal-new-window
 
 tell application "System Events"
 	set pp to application processes whose bundle identifier is "com.apple.Terminal"
