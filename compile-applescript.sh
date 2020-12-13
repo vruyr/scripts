@@ -18,6 +18,8 @@ function trim() {
 
 app_path="$(sed -n 's/^#:AppBundleName:\(.*\)$/\1/p' <"$applescript_path" | trim)"
 app_bundle_id="$(sed -n 's/^#:CFBundleIdentifier:\(.*\)$/\1/p' <"$applescript_path" | trim)"
+is_lsuielement="$(sed -n 's/^#:LSUIElement:\(.*\)$/\1/p' <"$applescript_path" | trim)"
+is_lsuielement=${is_lsuielement:-true}
 
 test -n "$app_path" || {
 	echo >&2 "Error: AppBundleName is not defined in the script."
@@ -34,7 +36,7 @@ mkdir -p "$app_dir"
 app_path="$app_dir/${app_path%.app}.app"
 
 osacompile -l AppleScript -o "$app_path" "$applescript_path"
-defaults write "$app_path/Contents/Info.plist" LSUIElement -bool true
+defaults write "$app_path/Contents/Info.plist" LSUIElement -bool "$is_lsuielement"
 defaults write "$app_path/Contents/Info.plist" CFBundleIdentifier -string "$app_bundle_id"
 plutil -convert xml1 "$app_path/Contents/Info.plist"
 
