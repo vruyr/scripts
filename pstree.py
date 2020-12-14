@@ -61,6 +61,7 @@ def gen_process_trees():
 		("pgid", "pgid"),
 		("user", "user"),
 		("etime", "etime"),
+		("rss", "rss"),
 		("args", "args") # must be last
 	]
 	ps_args = []
@@ -173,6 +174,10 @@ class TreeNode(object):
 			else:
 				self._field_cache["etime"] = None
 		return self._field_cache["etime"]
+
+	@property
+	def rss(self):
+		return self.get_field("rss")
 
 	@property
 	def start_time(self):
@@ -358,6 +363,8 @@ class TreeNode(object):
 		yield self.get_style("pgid")
 		yield "(PGID: {})".format(self.pgid)
 		yield self.get_style("reset")
+		yield " "
+		yield self.rss
 		yield " "
 		yield self.get_style("user")
 		yield self.user
