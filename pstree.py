@@ -26,24 +26,37 @@ def main(*, args, prog):
 				for p in gen_process_trees()
 		)
 
-	if opts.watch:
-		try:
-			sys.stdout.write(ANSI_smcup)
-			while True:
-				s = render()
-				sys.stdout.write(ANSI_clear)
-				sys.stdout.write("{}\n\n".format(datetime.datetime.now()))
-				sys.stdout.write(s)
-				sys.stdout.flush()
-				time.sleep(opts.interval)
-		except KeyboardInterrupt:
-			pass
-		finally:
-			sys.stdout.write(ANSI_rmcup)
-	else:
-		output = render()
-		sys.stdout.write(output)
-		return 0 if output else 1
+	try:
+		if opts.watch:
+			try:
+				sys.stdout.write(ANSI_smcup)
+				while True:
+					s = render()
+					sys.stdout.write(ANSI_clear)
+					sys.stdout.write("{}\n\n".format(datetime.datetime.now()))
+					sys.stdout.write(s)
+					sys.stdout.flush()
+					time.sleep(opts.interval)
+			except KeyboardInterrupt:
+				pass
+			finally:
+				sys.stdout.write(ANSI_rmcup)
+		else:
+			output = render()
+			sys.stdout.write(output)
+			return 0 if output else 1
+	except subprocess.CalledProcessError as e:
+		print(
+			"Command Failed with exit code ", e.returncode, "\n",
+			e.cmd, "\n",
+			"--- output ---\n", e.output, "\n",
+			"--- stdout ---\n", e.stdout, "\n",
+			"--- stderr ---\n", e.stderr, "\n"
+			"---\n",
+			sep="",
+			end="",
+			file=sys.stderr,
+		)
 
 
 FIELD_NAME_PADDING = ("{", "}")
