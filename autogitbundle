@@ -70,11 +70,14 @@ async def create_bundles(*, log):
 			continue
 		elif key == "suffix":
 			repo_path_suffix = value
+			if not pathlib.Path(repo_path_prefix + repo_path_suffix).samefile(repo_path):
+				continue
+		elif key == "suffixregex":
+			if not re.fullmatch(re.escape(repo_path_prefix) + value, repo_path.as_posix()):
+				continue
+			repo_path_suffix = strip_prefix(repo_path.as_posix(), repo_path_prefix, enforce=True)
 		else:
 			await log.put(f"Unknown config key {key}")
-			continue
-
-		if not pathlib.Path(repo_path_prefix + repo_path_suffix).samefile(repo_path):
 			continue
 
 		bundle_path = bundle_dir / (strip_suffix(repo_path_suffix, ".git") + ".gitbundle")
@@ -142,8 +145,22 @@ class Git(object):
 		return (m.groups(), value)
 
 
-def strip_suffix(s, suffix):
-	return s[:-len(suffix)] if s.endswith(suffix) else s
+def strip_prefix(s, prefix, *, enforce=False):
+	if s.startswith(prefix):
+		return s[len(prefix):]
+	elif not enforce:
+		return s
+	else:
+		raise ValueError(f"Provided string {s!r} does not have a prefix {prefix!r}.")
+
+
+def strip_suffix(s, suffix, *, enforce=False):
+	if s.endswith(suffix):
+		return s[:-len(suffix)]
+	elif not enforce:
+		return s
+	else:
+		raise ValueError(f"Provided string {s!r} does not have a suffix {suffix!r}.")
 
 
 async def printer(*, queue, fo):
