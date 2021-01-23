@@ -110,7 +110,8 @@ function main() {
 	fi
 	if [ "$homebrew_bundle_cleanup" ]; then
 		echo "--- brew bundle cleanup"
-		eval_indent 'brew bundle cleanup --file="$BREW_BUNDLE_FILE_PATH"'
+		#TODO The `brew bundle cleanup` has a bug where it doesn't recognize formulae from "core" tap spelled out with their fully-qualified names (e.g. homebrew/core/tmux).
+		eval_indent 'cat "$BREW_BUNDLE_FILE_PATH" | sed "s|^brew \"homebrew/core/|brew \"|" | brew bundle cleanup --file=-'
 	fi
 	if [ "$npm_outdated" ]; then
 		echo "--- npm outdated"
