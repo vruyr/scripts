@@ -15,12 +15,12 @@ function main(...args) {
 		$.printf("%s\n", "WARNING: Exporting mail attachments is not fully implemented yet.");
 	}
 
-	let app = Application("/Applications/Mail.app")
+	let app = Application("com.apple.mail");
 
 	let result = "";
 
-	for(let mw of app.messageViewers()) {
-		for(let m of mw.selectedMessages()) {
+	for(let mw of app.messageViewers() || []) {
+		for(let m of mw.selectedMessages() || []) {
 			if(exportAttachments) {
 				let rootFolderName = dateToShortStr(m.dateSent()) + " " + sanitizeForFilename(m.subject());
 				let rootFolderPath = "";
@@ -79,9 +79,10 @@ function sanitizeForFilename(s) {
 
 
 function mailboxToStr(m) {
-	if(m.properties().container) {
+	// No better way was discovered to detect that "m" does not have a container.
+	try {
 		return mailboxToStr(m.container()) + "/" + m.name();
-	} else {
+	} catch(e) {
 		return `[${m.name()}]`;
 	}
 }
@@ -136,5 +137,5 @@ function zpadStrInt(i, n) {
 
 
 function run(args) {
-	main(...args);
+	return main(...args);
 }
