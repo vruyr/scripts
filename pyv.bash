@@ -1,5 +1,6 @@
 PYV_ROOT_DIR="${PYV_ROOT_DIR:-$HOME/.bin/python/venv}"
 
+
 function pyv() {
 	local default_file="$PYV_ROOT_DIR/.default"
 	local venv_name=""
@@ -23,6 +24,27 @@ function pyv() {
 
 	source "$venv_dir/bin/activate"
 }
+
+
+function pyv_new() {
+	local pyvenv_root="$PYV_ROOT_DIR"
+	local pyvenv_name="$1"
+	local python_path="$(python3 -c 'import sys, os; print(os.path.realpath(sys.executable))')"
+	local pyvenv_dir="$pyvenv_root/$pyvenv_name-$("$python_path" -c 'import platform; print(platform.python_implementation().lower(), "-", platform.python_version(), sep="")')"
+	(
+		set -o errexit
+		printf "Creating the python venv '%s'\n" "$pyvenv_name"
+		"$python_path" -m venv "$pyvenv_dir" --without-pip
+		printf "Installing pip for '%s'\n" "$pyvenv_dir/bin/python"
+		curl -s https://bootstrap.pypa.io/get-pip.py | "$pyvenv_dir/bin/python" -
+	) >&2 || {
+		echo >&1 "Python venv creation failed"
+		return 1
+	}
+	printf "%s\n" "$pyvenv_dir"
+	return 0
+}
+
 
 function __pyv_complete() {
 	# for v in $(compgen -A variable COMP); do echo "${v}=${!v}"; done
