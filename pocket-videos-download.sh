@@ -8,9 +8,10 @@ supported_domains=(
 set -o errexit
 
 selfdir="$(cd "$(dirname "$0")" && pwd)"
-download_folder=~/Downloads/youtube
-destination_folder=/Volumes/Public/Videos/youtube
-destination_git_folder=~/.xgit/videos
+       download_folder="$(python3 -c 'import sys,pathlib;print(str(pathlib.Path(sys.argv[1]).absolute()))'        "${download_folder:-$HOME/Downloads/youtube}")"
+    destination_folder="$(python3 -c 'import sys,pathlib;print(str(pathlib.Path(sys.argv[1]).absolute()))'     "${destination_folder:-/Volumes/Public/Videos/youtube}")"
+destination_git_folder="$(python3 -c 'import sys,pathlib;print(str(pathlib.Path(sys.argv[1]).absolute()))' "${destination_git_folder:-$HOME/.xgit/videos}")"
+
 
 okay_dirty=
 finish_existing=
