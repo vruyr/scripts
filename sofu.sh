@@ -114,8 +114,12 @@ function main() {
 		eval_indent 'cat "$BREW_BUNDLE_FILE_PATH" | sed "s|^brew \"homebrew/core/|brew \"|" | brew bundle cleanup --file=-'
 	fi
 	if [ "$npm_outdated" ]; then
-		echo "--- npm outdated"
-		eval_indent 'npm outdated --global'
+		if type 2>/dev/null npm; then
+			echo "--- npm outdated"
+			eval_indent 'npm outdated --global'
+		else
+			echo "--- npm outdated - NOT AVAILABLE"
+		fi
 	fi
 	if [ "$pyv_outdated" ]; then
 		if [ -n "$PYV_ROOT_DIR" ]; then
