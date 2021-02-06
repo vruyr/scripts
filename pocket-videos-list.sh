@@ -6,7 +6,7 @@ supported_domains=(
 )
 
 getpocket list "$@" \
-	--format $'{tag_list}\t{item_id}\t{given_url}\t{given_or_resolved_title}\n' \
+	--format $'{tag_list}\t{item_id}\t{time_added_formatted}\t{given_url}\t{given_or_resolved_title}\n' \
 	$(printf " -d %q" "${supported_domains[@]}") \
 	| \
 	column -t -s $'\t' | \
