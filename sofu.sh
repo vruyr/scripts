@@ -114,7 +114,7 @@ function main() {
 		eval_indent 'cat "$BREW_BUNDLE_FILE_PATH" | sed "s|^brew \"homebrew/core/|brew \"|" | brew bundle cleanup --file=-'
 	fi
 	if [ "$npm_outdated" ]; then
-		if type 2>/dev/null npm; then
+		if type >/dev/null 2>&1 npm; then
 			echo "--- npm outdated"
 			eval_indent 'npm outdated --global'
 		else
@@ -128,8 +128,16 @@ function main() {
 		fi
 	fi
 	if [ "$macappstore_outdated" ]; then
-		echo "--- mas outdated"
-		eval_indent 'mas outdated'
+		if type >/dev/null 2>&1 mas; then
+			if [[ "$(mas version)" =~ ^1\..* ]]; then
+				echo "--- mas outdated"
+				eval_indent 'mas outdated'
+			else
+				echo "--- mas outdated - NOT SUPPORTED"
+			fi
+		else
+			echo "--- mas outdated - NOT AVAILABLE"
+		fi
 	fi
 	if [ "$macossystem_outdated" ]; then
 		echo "--- softwareupdate --list"
