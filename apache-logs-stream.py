@@ -95,8 +95,8 @@ async def process_apache_access_log(*, input_stream, output_queue, exclude_hosts
 
 	# https://github.com/maxmind/GeoIP2-python
 	# https://dev.maxmind.com/#GeoIP
-	with geoip2.database.Reader("/Users/vruyr/Downloads/geoip2/GeoLite2-City_20200804/GeoLite2-City.mmdb") as geoip_reader_city:
-		with geoip2.database.Reader("/Users/vruyr/Downloads/geoip2/GeoLite2-ASN_20200811/GeoLite2-ASN.mmdb") as geoip_reader_asn:
+	with geoip2.database.Reader("/Users/vruyr/.bin/geoip2/GeoLite2-City_20200804/GeoLite2-City.mmdb") as geoip_reader_city:
+		with geoip2.database.Reader("/Users/vruyr/.bin/geoip2/GeoLite2-ASN_20200811/GeoLite2-ASN.mmdb") as geoip_reader_asn:
 			while True:
 				line = await input_stream.readline()
 				if not line:
