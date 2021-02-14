@@ -12,6 +12,7 @@ Options:
 	--ffprobe-path PATH         Path to ffprobe executable to be used.
 	                            [default: ffprobe]
 	--cache-path PATH           Path to file containing cached durations from previous runs.
+	--chdir, -C PATH            Change current folder to specified path before doing anything else.
 """
 
 import sys, locale, asyncio, subprocess, os, collections, re
@@ -34,8 +35,11 @@ async def main(*, args, prog):
 	playback_rate = float(params.pop("--playback-rate"))
 	ffprobe_path = params.pop("--ffprobe-path")
 	cache_path = params.pop("--cache-path")
+	chdir_path = params.pop("--chdir")
 	assert not cache_path, "--cache-path is not implemented"
 	assert not params, params
+
+	os.chdir(chdir_path)
 
 	log = asyncio.Queue()
 	pending_tasks = []
