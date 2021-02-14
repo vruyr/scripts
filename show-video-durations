@@ -14,7 +14,7 @@ Options:
 	--cache-path PATH           Path to file containing cached durations from previous runs.
 """
 
-import sys, locale, asyncio, subprocess, os, collections
+import sys, locale, asyncio, subprocess, os, collections, re
 # pip install docopt==0.6.2
 import docopt
 
@@ -166,41 +166,40 @@ async def walker(*, paths, queue):
 
 
 DEFAULT_IGNORED_FILES = [
-	".DS_Store",
-	"._.DS_Store",
-	"favorite.jpg",
-	"._favorite.jpg",
-	"favorite-atv.jpg",
-	"._favorite-atv.jpg",
-	"folder.jpg",
-	"._folder.jpg",
-	"folder-atv.jpg",
-	"._folder-atv.jpg",
+	r"(\._)?\.DS_Store",
+	r"(\._)?(favorite|folder)(-atv)?\.(jpg|png)",
+	r".*\.empty\.mp4",
 ]
 
 
-async def walk_paths(*paths, ignored_files=DEFAULT_IGNORED_FILES, ignored_dirs=[".meta"]):
+DEFAULT_IGNORED_DIRS = [
+	r"\.meta",
+	r"\.routes",
+]
+
+
+async def walk_paths(*paths, ignored_files=DEFAULT_IGNORED_FILES, ignored_dirs=DEFAULT_IGNORED_DIRS):
+	ignored_files = re.compile("|".join(f"({x})" for x in ignored_files))
+	ignored_dirs  = re.compile("|".join(f"({x})" for x in ignored_dirs))
 	paths = list(paths)
 	while paths:
 		p = paths.pop(0)
 		if not os.path.isdir(p):
-			if p in ignored_files:
+			if ignored_files.fullmatch(p) is not None:
 				continue
 			yield (p, p)
 		else:
-			if p in ignored_dirs:
+			if ignored_dirs.fullmatch(p) is not None:
 				continue
 			for rootdir, dirs, files in os.walk(p, topdown=True):
-				dirs[:] = [d for d in dirs if d not in ignored_dirs]
+				dirs[:] = [d for d in dirs if ignored_dirs.fullmatch(d) is None]
 				for f in files:
-					if f in ignored_files:
+					if ignored_files.fullmatch(f) is not None:
 						continue
 					yield (p, os.path.join(rootdir, f))
 
 
 async def get_video_file_duration(video_file_path, *, ffprobe_path):
-	if os.path.getsize(video_file_path) == 0:
-		return float(0)
 	p = await asyncio.create_subprocess_exec(
 		ffprobe_path, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_file_path,
 		shell=False,
