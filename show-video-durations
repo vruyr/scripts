@@ -39,7 +39,8 @@ async def main(*, args, prog):
 	assert not cache_path, "--cache-path is not implemented"
 	assert not params, params
 
-	os.chdir(chdir_path)
+	if chdir_path is not None:
+		os.chdir(chdir_path)
 
 	log = asyncio.Queue()
 	pending_tasks = []
