@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import pathlib, itertools, collections, json, sys, subprocess
 
@@ -7,7 +7,7 @@ def main():
 	folders = collections.defaultdict(list)
 
 	for server, username in [
-		["m000.local", "vruyr@mechena.com"],
+		["10.0.7.10", "vruyr@mechena.com"],
 		["imap.gmail.com", "vruyr@vruyr.com"]
 	]:
 		p = subprocess.run(
@@ -16,7 +16,7 @@ def main():
 			stderr=subprocess.PIPE,
 			shell=False
 		)
-		assert p.returncode == 0
+		assert p.returncode == 0, p
 		assert not p.stderr
 		for entry in json.loads(p.stdout.decode()):
 			path = entry["path"]
