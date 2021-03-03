@@ -2,7 +2,7 @@
 
 set -o errexit
 
-trap "echo FAILURE" ERR
+trap "declare -p BASH_COMMAND; echo FAILED" ERR
 
 thedir="$(mktemp -d -t video-urls-to-m3u)"
 thefile="$thedir/playlist.m3u8"
