@@ -12,6 +12,12 @@ test "${#@}" -eq 0 && {
 
 set -o errexit
 
+
+find_print_operator=()
+if [ -z "$RRMDIR_QUIET" ]; then
+	find_print_operator=( -print )
+fi
+
 for d in "$@";
 do
 	d=$(cd "$d" && pwd)
@@ -40,9 +46,12 @@ do
 			\)
 		\)
 	)
-	find "$d" "${find_garbage_args[@]}" -delete -print
+	find "$d" "${find_garbage_args[@]}" -delete "${find_print_operator[@]}"
 
 	# recursive folder deletion
-	find "$d" -mindepth 1 -type d -empty -delete -print
-	rmdir "$d"; echo "$d"
+	find "$d" -mindepth 1 -type d -empty -delete "${find_print_operator[@]}"
+	rmdir "$d"
+	if [ -z "$RRMDIR_QUIET" ]; then
+		echo "$d"
+	fi
 done
