@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 set -o errexit
+trap "declare -p BASH_COMMAND; echo FAILED" ERR
 
-trap "echo FAILED" ERR
 
 thumbnail_png="thumbnail.png"
 if [ -e "$thumbnail_png" ]; then
