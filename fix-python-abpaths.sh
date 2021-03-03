@@ -2,7 +2,7 @@
 
 
 set -o errexit
-trap "echo FAILED" ERR
+trap "declare -p BASH_COMMAND; echo FAILED" ERR
 
 
 function main() {
