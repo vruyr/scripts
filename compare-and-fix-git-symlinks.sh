@@ -41,6 +41,7 @@ function onexit() {
 }
 
 function onerror() {
+	declare -p BASH_COMMAND
 	echo "ERROR"
 }
 
