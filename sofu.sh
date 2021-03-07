@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
 
-if ! [ "${BASH_VERSINFO[0]}" -ge 3 -a "${BASH_VERSINFO[1]}" -ge 2 -a "${BASH_VERSINFO[2]}" -ge 57 ]; then
-	echo "FATAL: Unsupported bash version: $(declare -p BASH_VERSINFO 2>&1)" >&2
+function check_version() {
+	local versinfo="$1"
+	shift
+	for i in $(seq $#); do
+		local x="$versinfo[$((i - 1))]"
+		test "${!x}" -lt "${!i}" && return 1
+		test "${!x}" -gt "${!i}" && return 0
+	done
+	return 0;
+}
+
+declare -ar MIN_BASH_VERS=(3 2 57)
+if ! check_version BASH_VERSINFO "${MIN_BASH_VERS[@]}"; then
+	printf >&2 "FATAL: Unsupported bash version:\n"
+	printf >&2 "\t%s\n" "$(declare -p BASH_VERSINFO 2>&1)" "$(declare -p MIN_BASH_VERS 2>&1)"
 	exit 127
 fi
 
