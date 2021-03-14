@@ -14,9 +14,10 @@ Options:
 	--cache-path PATH           Path to file containing cached durations from previous runs.
 	--chdir, -C PATH            Change current folder to specified path before doing anything else.
 	--ignore, -i REGEX          Exclude paths that match the regex pattern from calculations.
+	--date-regex, -d REGEX      Regex pattern for full file name without path to extract date. [default: (?P<date>\\d{{8}}).*]
 """
 
-import sys, locale, asyncio, subprocess, os, collections, re
+import sys, locale, asyncio, subprocess, os, collections, re, itertools
 # pip install docopt==0.6.2
 import docopt
 
@@ -38,6 +39,7 @@ async def main(*, args, prog):
 	cache_path = params.pop("--cache-path")
 	chdir_path = params.pop("--chdir")
 	ignored_paths = params.pop("--ignore")
+	date_regex = params.pop("--date-regex")
 	assert not cache_path, "--cache-path is not implemented"
 	assert not params, params
 
@@ -60,6 +62,7 @@ async def main(*, args, prog):
 			self.duration = 0
 			self.count = 0
 			self.remaining = 0
+			self.unique_days = set()
 
 	path_durations = collections.OrderedDict()
 	files_failed = collections.OrderedDict()
@@ -69,39 +72,59 @@ async def main(*, args, prog):
 		await log.put("\n")
 		while True:
 			pfd = await pending_durations.get()
-			if pfd is not None:
-				the_path, the_file, the_duration = pfd
-				file_dir = os.path.dirname(the_file)
-				clear = f"\x1b[{len(path_durations)}F\x1b[0J"
-
-				if isinstance(the_duration, Exception):
-					files_failed[the_file] = the_duration
-					path_durations[file_dir].remaining -= 1
-				else:
-					if file_dir not in path_durations:
-						path_durations[file_dir] = PathDuration()
-
-					if the_duration == 0:
-						path_durations[file_dir].count += 1
-						path_durations[file_dir].remaining += 1
-					else:
-						path_durations[file_dir].remaining -= 1
-						path_durations[file_dir].duration += the_duration
-
-					duration_tuples = list(path_durations.items())
-					duration_tuples.sort(key=(lambda k: (k[1].duration, k[1].count)))
-					await log.put(
-						clear +
-						"".join(f"{format_seconds(d.duration, speed=playback_rate)} {d.count:>3} {format_remaining(d.remaining)}{os.path.normpath(p)}\n" for p, d in duration_tuples)
-					)
-
-				pending_durations.task_done()
-			else:
+			if pfd is None:
 				break
-		await log.put(f"Total: {format_seconds(sum(d.duration for d in path_durations.values()), speed=playback_rate)}\n")
+
+			the_path, the_file, the_duration = pfd
+			file_dir = os.path.dirname(the_file)
+			file_name = os.path.basename(the_file)
+			file_date = None
+			if m := re.fullmatch(date_regex, file_name):
+				file_date = m.group("date")
+			else:
+				print("\n\n\n NO MATCH", repr(file_name), end="\n\n\n")
+			clear = f"\x1b[{len(path_durations)}F\x1b[0J"
+
+			if isinstance(the_duration, Exception):
+				files_failed[the_file] = the_duration
+				path_durations[file_dir].remaining -= 1
+			else:
+				if file_dir not in path_durations:
+					path_durations[file_dir] = PathDuration()
+
+				if the_duration == 0:
+					path_durations[file_dir].count += 1
+					path_durations[file_dir].remaining += 1
+				else:
+					path_durations[file_dir].remaining -= 1
+					path_durations[file_dir].duration += the_duration
+					if file_date is not None:
+						path_durations[file_dir].unique_days.add(file_date)
+
+				durations = list(path_durations.items())
+				durations.sort(key=(lambda k: (k[1].duration, k[1].count)))
+				await log.put(clear + "".join(format_duration(p, d) for p, d in durations))
+
+			pending_durations.task_done()
+		total_seconds = sum(d.duration for d in path_durations.values())
+		total_unique_days = len(set(itertools.chain(*(d.unique_days for d in path_durations.values()))))
+		avg_daily_increase_msg = ""
+		if total_unique_days:
+			avg_daily_increase_msg = f" [{format_seconds(total_seconds / total_unique_days, speed=playback_rate)}]"
+		await log.put(f"Total: {format_seconds(total_seconds, speed=playback_rate)}{avg_daily_increase_msg}\n")
 		if files_failed:
 			await log.put(f"{files_failed}\n")
 
+	def format_duration(p, d):
+		duration = format_seconds(d.duration, speed=playback_rate)
+		avg_daily_increase = format_seconds(None)
+		num_unique_days = len(d.unique_days)
+		if num_unique_days:
+			avg_daily_increase = format_seconds((d.duration * 1.0 / num_unique_days), speed=playback_rate)
+		return f"{duration} [{avg_daily_increase}] {d.count:>3} {format_remaining_count(d.remaining)}{os.path.normpath(p)}\n"
+
+	def format_remaining_count(r, *, min_width=3, padding_right=" "):
+		return f"{(r):>{min_width}}{padding_right}" if r else ""
 
 	pending_tasks.append(
 		asyncio.ensure_future(duration_consumer())
@@ -205,7 +228,7 @@ async def walk_paths(*paths, ignored_files=DEFAULT_IGNORED_FILES, ignored_dirs=D
 		if not os.path.isdir(p):
 			# yield from is not supporeted in async functions as of Python 3.8.2
 			for pf in output_filter(p, p):
-				yield output_filter
+				yield pf
 		else:
 			if ignored_dirs.fullmatch(p) is not None:
 				continue
@@ -231,6 +254,8 @@ async def get_video_file_duration(video_file_path, *, ffprobe_path):
 
 
 def format_seconds(seconds, *, subsecond=False, speed=1.0):
+	if seconds is None:
+		return " " * 12
 	seconds = seconds / speed
 	assert subsecond == False
 	seconds, subseconds = divmod(seconds, 1)
@@ -250,10 +275,6 @@ def format_seconds(seconds, *, subsecond=False, speed=1.0):
 			result += " "
 		result += f"{seconds:>2}s"
 	return result
-
-
-def format_remaining(r, *, min_width=3, padding_right=" "):
-	return f"{(r):>{min_width}}{padding_right}" if r else ""
 
 
 async def printer(*, queue, fo):
