@@ -2,7 +2,7 @@
 
 """
 Usage:
-	{prog} [options] [PATHS...]
+	{prog} [options] [-i REGEX]... [PATHS...]
 
 Options:
 	--jobs, -j NUMBER           Maximum parallel jobs.
@@ -13,6 +13,7 @@ Options:
 	                            [default: ffprobe]
 	--cache-path PATH           Path to file containing cached durations from previous runs.
 	--chdir, -C PATH            Change current folder to specified path before doing anything else.
+	--ignore, -i REGEX          Exclude paths that match the regex pattern from calculations.
 """
 
 import sys, locale, asyncio, subprocess, os, collections, re
@@ -36,6 +37,7 @@ async def main(*, args, prog):
 	ffprobe_path = params.pop("--ffprobe-path")
 	cache_path = params.pop("--cache-path")
 	chdir_path = params.pop("--chdir")
+	ignored_paths = params.pop("--ignore")
 	assert not cache_path, "--cache-path is not implemented"
 	assert not params, params
 
@@ -113,7 +115,7 @@ async def main(*, args, prog):
 			ffprobe_path=ffprobe_path,
 		))
 	)
-	await walker(paths=paths, queue=pending_paths)
+	await walker(paths=paths, queue=pending_paths, ignored_paths=ignored_paths)
 
 	await pending_paths.join()
 	await pending_durations.join()
@@ -165,8 +167,8 @@ async def path_consumer(*, queue_in, queue_out, max_parallel, ffprobe_path):
 	await queue_out.put(None)
 
 
-async def walker(*, paths, queue):
-	async for p in walk_paths(*paths):
+async def walker(*, paths, queue, ignored_paths):
+	async for p in walk_paths(*paths, ignored_paths=ignored_paths):
 		await queue.put(p)
 	await queue.put(None)
 
@@ -184,25 +186,35 @@ DEFAULT_IGNORED_DIRS = [
 ]
 
 
-async def walk_paths(*paths, ignored_files=DEFAULT_IGNORED_FILES, ignored_dirs=DEFAULT_IGNORED_DIRS):
-	ignored_files = re.compile("|".join(f"({x})" for x in ignored_files))
-	ignored_dirs  = re.compile("|".join(f"({x})" for x in ignored_dirs))
+async def walk_paths(*paths, ignored_files=DEFAULT_IGNORED_FILES, ignored_dirs=DEFAULT_IGNORED_DIRS, ignored_paths=None):
+	ignored_files  = re.compile("|".join(f"({x})" for x in ignored_files))
+	ignored_dirs   = re.compile("|".join(f"({x})" for x in ignored_dirs))
+	ignored_paths  = re.compile("|".join(f"({x})" for x in ignored_paths or []))
 	paths = list(paths)
+
+	def output_filter(parent_folder, abs_file_path):
+		abs_file_path = os.path.normpath(abs_file_path)
+		if ignored_files.fullmatch(os.path.basename(abs_file_path)) is not None:
+			return
+		if ignored_paths.fullmatch(abs_file_path) is not None:
+			return
+		yield (parent_folder, abs_file_path)
+
 	while paths:
 		p = paths.pop(0)
 		if not os.path.isdir(p):
-			if ignored_files.fullmatch(p) is not None:
-				continue
-			yield (p, p)
+			# yield from is not supporeted in async functions as of Python 3.8.2
+			for pf in output_filter(p, p):
+				yield output_filter
 		else:
 			if ignored_dirs.fullmatch(p) is not None:
 				continue
 			for rootdir, dirs, files in os.walk(p, topdown=True):
 				dirs[:] = [d for d in dirs if ignored_dirs.fullmatch(d) is None]
 				for f in files:
-					if ignored_files.fullmatch(f) is not None:
-						continue
-					yield (p, os.path.join(rootdir, f))
+					# yield from is not supporeted in async functions as of Python 3.8.2
+					for pf in output_filter(p, os.path.join(rootdir, f)):
+						yield pf
 
 
 async def get_video_file_duration(video_file_path, *, ffprobe_path):
