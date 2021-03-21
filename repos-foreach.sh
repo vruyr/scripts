@@ -100,7 +100,7 @@ function incoming() {
 		fi
 
 		if [ -n "$(git -P log --oneline "${exclusions[@]}" --remotes="$r" "${nolocalrefs[@]}" -- )" ]; then
-			l="$(git -c color.ui="$color_ui" -P lg --boundary "${exclusions[@]}" --remotes="$r" "${nolocalrefs[@]}" -- | sed $'s/^/\t\t/')"
+			l="$(git -c color.ui="$color_ui" -P lg -10 --boundary "${exclusions[@]}" --remotes="$r" "${nolocalrefs[@]}" -- | sed $'s/^/\t\t/')"
 			output_messages+=( "$(printf "\n\t%s\n%s\x1b[0m\n" "$r" "$l")" )
 		fi
 	done
