@@ -27,9 +27,10 @@ function pyv() {
 
 
 function pyv_new() {
+	local python_path="$("$1" -c 'import sys, os; print(os.path.realpath(sys.executable))')"
+	local pyvenv_name="$2"
+
 	local pyvenv_root="$PYV_ROOT_DIR"
-	local pyvenv_name="$1"
-	local python_path="$(python3 -c 'import sys, os; print(os.path.realpath(sys.executable))')"
 	local pyvenv_dir="$pyvenv_root/$pyvenv_name-$("$python_path" -c 'import platform; print(platform.python_implementation().lower(), "-", platform.python_version(), sep="")')"
 	(
 		set -o errexit
