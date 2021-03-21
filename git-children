@@ -20,7 +20,7 @@ function show_refs() {
 		refs+=( "$ref~..$ref" )
 	done
 
-	git gl --boundary "${refs[@]}"
+	git lg --boundary "${refs[@]}"
 }
 
 main "$@"
