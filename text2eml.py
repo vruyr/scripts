@@ -9,7 +9,7 @@ Options:
 	--from, -f ADDR       The "From" MIME header value.
 	--to, -t ADDR         The "To" MIME header value.
 	--subject, -s TEXT    The "Subject" MIME header value.
-	--font-size, -x SIZE  The font size to use in the resulting message. [default: 6pt]
+	--font-size, -x SIZE  The font size to use in the resulting message.
 """
 
 import sys, locale, os, xml.dom.minidom, email.message, subprocess
@@ -52,10 +52,30 @@ def main(*, args, prog):
 			"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd",
 		),
 	)
-	pre = doc.createElement("pre")
-	pre.setAttribute("style", f"font-size: {font_size};")
-	pre.appendChild(doc.createTextNode(data))
-	doc.documentElement.appendChild(pre)
+	html = doc.documentElement
+	html.appendChild(head := doc.createElement("head"))
+	head.appendChild(meta := doc.createElement("meta"))
+	meta.setAttribute("name", "viewport")
+	meta.setAttribute("content", "width=device-width, initial-scale=1, minimum-scale=1")
+	head.appendChild(style := doc.createElement("style"))
+	style.appendChild(doc.createTextNode(f"""
+		.text {{
+			white-space: nowrap;
+			font-family: monospace;
+			{"font-size: " + font_size + ";" if font_size else ""}
+		}}
+
+		.line {{
+		}}
+	"""))
+	html.appendChild(body := doc.createElement("body"))
+	body.appendChild(text_container := doc.createElement("div"))
+	text_container.setAttribute("class", "text")
+	for line in data.splitlines():
+		line = line.replace(" ", "\u00A0") # No-Break Space
+		text_container.appendChild(line_container := doc.createElement("div"))
+		line_container.appendChild(doc.createTextNode(line))
+		line_container.setAttribute("class", "line")
 
 	encoding = "UTF-8"
 
