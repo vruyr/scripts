@@ -111,7 +111,7 @@ if [ -z "$finish_existing" ]; then
 		$("$getpocket_path" "${getpocket_extra_args[@]}" list "$@" $(printf " -d %q" "${supported_domains[@]}") -x _videos_not --format $'{resolved_url}\n')
 	)
 	if [ "${#urls[@]}" -gt 0 ]; then
-		declare -p urls
+		printf "Downloading %d videos\n" "${#urls[@]}"
 		printf "%s\n" "${urls[@]}" | "$youtubedl_path" >&2 "${youtubedl_extra_args[@]}" -i -a - || true
 	fi
 	unset urls
