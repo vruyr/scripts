@@ -108,7 +108,7 @@ cd "$download_folder"
 
 if [ -z "$finish_existing" ]; then
 	declare -a urls=(
-		$("$getpocket_path" "${getpocket_extra_args[@]}" list "$@" $(printf " -d %q" "${supported_domains[@]}") -x _videos_not --format $'{resolved_url}\n')
+		$("$getpocket_path" "${getpocket_extra_args[@]}" list "$@" $(printf " -d %q" "${supported_domains[@]}") -x '~videos-not' --format $'{resolved_url}\n')
 	)
 	if [ "${#urls[@]}" -gt 0 ]; then
 		printf "Downloading %d videos\n" "${#urls[@]}"
