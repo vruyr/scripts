@@ -67,9 +67,10 @@ async def main(*, args, prog):
 	path_durations = collections.OrderedDict()
 	files_failed = collections.OrderedDict()
 
-	async def duration_consumer():
+	async def duration_consumer(*, isatty):
 		nonlocal path_durations, files_failed
-		await log.put("\n")
+		if isatty:
+			await log.put("\n")
 		while True:
 			pfd = await pending_durations.get()
 			if pfd is None:
@@ -83,7 +84,7 @@ async def main(*, args, prog):
 				file_date = m.group("date")
 			else:
 				print("\n\n\n NO MATCH", repr(file_name), end="\n\n\n")
-			clear = f"\x1b[{len(path_durations)}F\x1b[0J"
+			clear = f"\x1b[{len(path_durations)}F\x1b[0J" if isatty else ""
 
 			if isinstance(the_duration, Exception):
 				files_failed[the_file] = the_duration
@@ -103,14 +104,19 @@ async def main(*, args, prog):
 
 				durations = list(path_durations.items())
 				durations.sort(key=(lambda k: (k[1].duration, k[1].count)))
-				await log.put(clear + "".join(format_duration(p, d) for p, d in durations))
+				if clear:
+					await log.put(clear + "".join(format_duration(p, d) for p, d in durations))
 
 			pending_durations.task_done()
+
+		if not clear:
+			await log.put("".join(format_duration(p, d) for p, d in durations))
+
 		total_seconds = sum(d.duration for d in path_durations.values())
 		total_unique_days = len(set(itertools.chain(*(d.unique_days for d in path_durations.values()))))
 		avg_daily_increase_msg = ""
 		if total_unique_days:
-			avg_daily_increase_msg = f" [{format_seconds(total_seconds / total_unique_days, speed=playback_rate)}]"
+			avg_daily_increase_msg = f" [Avg Daily Inc: {format_seconds(total_seconds / total_unique_days, speed=playback_rate)}]"
 		await log.put(f"Total: {format_seconds(total_seconds, speed=playback_rate)}{avg_daily_increase_msg}\n")
 		if files_failed:
 			await log.put(f"{files_failed}\n")
@@ -121,13 +127,13 @@ async def main(*, args, prog):
 		num_unique_days = len(d.unique_days)
 		if num_unique_days:
 			avg_daily_increase = format_seconds((d.duration * 1.0 / num_unique_days), speed=playback_rate)
-		return f"{duration} [{avg_daily_increase}] {d.count:>3} {format_remaining_count(d.remaining)}{os.path.normpath(p)}\n"
+		return f"{duration} [Avg Daily Inc: {avg_daily_increase}] {d.count:>3} {format_remaining_count(d.remaining)}{os.path.normpath(p)}\n"
 
 	def format_remaining_count(r, *, min_width=3, padding_right=" "):
 		return f"{(r):>{min_width}}{padding_right}" if r else ""
 
 	pending_tasks.append(
-		asyncio.ensure_future(duration_consumer())
+		asyncio.ensure_future(duration_consumer(isatty=sys.stdout.isatty()))
 	)
 	pending_paths = asyncio.Queue()
 	pending_tasks.append(
