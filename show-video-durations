@@ -58,11 +58,20 @@ async def main(*, args, prog):
 	pending_durations = asyncio.Queue()
 
 	class PathDuration(object):
-		def __init__(self):
+		def __init__(self, path):
+			self.path = path
 			self.duration = 0
 			self.count = 0
 			self.remaining = 0
 			self.unique_days = set()
+
+		def format(self):
+			duration = format_seconds(self.duration, speed=playback_rate)
+			avg_daily_increase = format_seconds(None)
+			num_unique_days = len(self.unique_days)
+			if num_unique_days:
+				avg_daily_increase = format_seconds((self.duration * 1.0 / num_unique_days), speed=playback_rate)
+			return f"{duration} [Avg Daily Inc: {avg_daily_increase}] {self.count:>3} {format_remaining_count(self.remaining)}{os.path.normpath(self.path)}\n"
 
 	path_durations = collections.OrderedDict()
 	files_failed = collections.OrderedDict()
@@ -91,7 +100,7 @@ async def main(*, args, prog):
 				path_durations[file_dir].remaining -= 1
 			else:
 				if file_dir not in path_durations:
-					path_durations[file_dir] = PathDuration()
+					path_durations[file_dir] = PathDuration(file_dir)
 
 				if the_duration == 0:
 					path_durations[file_dir].count += 1
@@ -102,32 +111,24 @@ async def main(*, args, prog):
 					if file_date is not None:
 						path_durations[file_dir].unique_days.add(file_date)
 
-				durations = list(path_durations.items())
-				durations.sort(key=(lambda k: (k[1].duration, k[1].count)))
+				durations = list(path_durations.values())
+				durations.sort(key=(lambda pd: (pd.duration, pd.count)))
 				if clear:
-					await log.put(clear + "".join(format_duration(p, d) for p, d in durations))
+					await log.put(clear + "".join(pd.format() for pd in durations))
 
 			pending_durations.task_done()
 
 		if not clear:
-			await log.put("".join(format_duration(p, d) for p, d in durations))
+			await log.put("".join(pd.format() for pd in durations))
 
-		total_seconds = sum(d.duration for d in path_durations.values())
-		total_unique_days = len(set(itertools.chain(*(d.unique_days for d in path_durations.values()))))
-		avg_daily_increase_msg = ""
-		if total_unique_days:
-			avg_daily_increase_msg = f" [Avg Daily Inc: {format_seconds(total_seconds / total_unique_days, speed=playback_rate)}]"
-		await log.put(f"Total: {format_seconds(total_seconds, speed=playback_rate)}{avg_daily_increase_msg}\n")
+		total = PathDuration("Total")
+		total.duration = sum(d.duration for d in path_durations.values())
+		total.count = sum(d.count for d in path_durations.values())
+		total.unique_days = set(itertools.chain(*(d.unique_days for d in path_durations.values())))
+		await log.put("\n" + total.format())
+
 		if files_failed:
 			await log.put(f"{files_failed}\n")
-
-	def format_duration(p, d):
-		duration = format_seconds(d.duration, speed=playback_rate)
-		avg_daily_increase = format_seconds(None)
-		num_unique_days = len(d.unique_days)
-		if num_unique_days:
-			avg_daily_increase = format_seconds((d.duration * 1.0 / num_unique_days), speed=playback_rate)
-		return f"{duration} [Avg Daily Inc: {avg_daily_increase}] {d.count:>3} {format_remaining_count(d.remaining)}{os.path.normpath(p)}\n"
 
 	def format_remaining_count(r, *, min_width=3, padding_right=" "):
 		return f"{(r):>{min_width}}{padding_right}" if r else ""
