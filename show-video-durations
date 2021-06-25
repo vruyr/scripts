@@ -65,13 +65,17 @@ async def main(*, args, prog):
 			self.remaining = 0
 			self.unique_days = set()
 
-		def format(self):
-			duration = format_seconds(self.duration, speed=playback_rate)
-			avg_daily_increase = format_seconds(None)
+		def format(self, widths):
+			while len(widths) < 2:
+				widths.append(0)
+			duration = format_seconds(self.duration, speed=playback_rate).lstrip()
+			widths[0] = max(widths[0], len(duration))
+			avg_daily_increase = ""
 			num_unique_days = len(self.unique_days)
 			if num_unique_days:
-				avg_daily_increase = format_seconds((self.duration * 1.0 / num_unique_days), speed=playback_rate)
-			return f"{duration} [Avg Daily Inc: {avg_daily_increase}] {self.count:>3} {format_remaining_count(self.remaining)}{os.path.normpath(self.path)}\n"
+				avg_daily_increase = format_seconds((self.duration * 1.0 / num_unique_days), speed=playback_rate).lstrip()
+			widths[1] = max(widths[1], len(avg_daily_increase))
+			return f"{duration:>{widths[0]}} [{avg_daily_increase:>{widths[1]}} daily] {self.count:>3} {format_remaining_count(self.remaining)}{os.path.normpath(self.path)}\n"
 
 	path_durations = collections.OrderedDict()
 	files_failed = collections.OrderedDict()
@@ -80,6 +84,9 @@ async def main(*, args, prog):
 		nonlocal path_durations, files_failed
 		if isatty:
 			await log.put("\n")
+
+		widths = [0, 0]
+
 		while True:
 			pfd = await pending_durations.get()
 			if pfd is None:
@@ -114,18 +121,22 @@ async def main(*, args, prog):
 				durations = list(path_durations.values())
 				durations.sort(key=(lambda pd: (pd.duration, pd.count)))
 				if clear:
-					await log.put(clear + "".join(pd.format() for pd in durations))
+					await log.put(clear + "".join(pd.format(widths=widths) for pd in durations))
 
 			pending_durations.task_done()
 
 		if not clear:
-			await log.put("".join(pd.format() for pd in durations))
+			# First run will calculate widths
+			for pd in durations:
+				pd.format(widths=widths)
+			# Actual rendering with widths already calculated
+			await log.put("".join(pd.format(widths=widths) for pd in durations))
 
 		total = PathDuration("Total")
 		total.duration = sum(d.duration for d in path_durations.values())
 		total.count = sum(d.count for d in path_durations.values())
 		total.unique_days = set(itertools.chain(*(d.unique_days for d in path_durations.values())))
-		await log.put("\n" + total.format())
+		await log.put("\n" + total.format(widths=widths))
 
 		if files_failed:
 			await log.put(f"{files_failed}\n")
