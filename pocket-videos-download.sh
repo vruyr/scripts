@@ -21,6 +21,7 @@ git_worktree_folder="$(git rev-parse --show-toplevel)"
           tree_path=tree
      youtubedl_path=youtube-dl
       lockdir_path="$git_worktree_folder/.lock"
+      download_all=
   supported_domains=(
 	"youtube.com"
 	"youtu.be"
@@ -50,6 +51,10 @@ while [ $# -ne 0 ]; do
 		"--youtubedl-path")
 			shift
 			youtubedl_path="$1"
+			shift
+			;;
+		"--download-all")
+			download_all=1
 			shift
 			;;
 		*)
@@ -116,8 +121,13 @@ cd "$download_folder"
 
 
 if [ -z "$finish_existing" ]; then
+	if [ -n "$download_all" ]; then
+		getpocket_list_args=()
+	else
+		getpocket_list_args=( -x '~videos-not' )
+	fi
 	declare -a urls=(
-		$("$getpocket_path" "${getpocket_extra_args[@]}" list "$@" $(printf " -d %q" "${supported_domains[@]}") -x '~videos-not' --format $'{resolved_url}\n')
+		$("$getpocket_path" "${getpocket_extra_args[@]}" list "$@" $(printf " -d %q" "${supported_domains[@]}") "${getpocket_list_args[@]}" --format $'{resolved_url}\n')
 	)
 	if [ "${#urls[@]}" -gt 0 ]; then
 		printf "Downloading %d videos\n" "${#urls[@]}"
