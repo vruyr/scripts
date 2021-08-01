@@ -20,6 +20,7 @@ git_worktree_folder="$(git rev-parse --show-toplevel)"
      getpocket_path=getpocket
           tree_path=tree
      youtubedl_path=youtube-dl
+      lockdir_path="$git_worktree_folder/.lock"
   supported_domains=(
 	"youtube.com"
 	"youtu.be"
@@ -83,6 +84,14 @@ if [ "$git_repo_folder" != "$detected_git_repo_folder" ]; then
 	exit 1
 fi
 unset detected_git_repo_folder
+
+
+mkdir "$lockdir_path"
+trap atexit EXIT
+function atexit() {
+	rmdir "$lockdir_path"
+}
+
 
 function this_git() {
 	git --git-dir="$git_repo_folder" --work-tree="$git_worktree_folder" "$@"
