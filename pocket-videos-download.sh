@@ -2,6 +2,15 @@
 
 set -o errexit
 trap "declare -p BASH_COMMAND; echo FAILED" ERR
+trap atexit EXIT
+
+
+atexit_rmdirs=()
+function atexit() {
+	for d in "${atexit_rmdirs[@]}"; do
+		RRMDIR_QUIET=1 "$selfdir/rrmdir" "$d"
+	done
+}
 
 
 function abspath() {
@@ -92,10 +101,7 @@ unset detected_git_repo_folder
 
 
 mkdir "$lockdir_path"
-trap atexit EXIT
-function atexit() {
-	rmdir "$lockdir_path"
-}
+atexit_rmdirs+=( "$lockdir_path" )
 
 
 function this_git() {
@@ -103,14 +109,8 @@ function this_git() {
 }
 
 
-is_dirty="$(this_git status --porcelain=v2)"
-test "$okay_dirty" == 1 -o -z "$is_dirty" || {
-	echo 2>&1 "The repository is dirty."
-	exit 1
-}
-
-
 download_folder="$root_folder/.tmp"
+atexit_rmdirs+=( "$download_folder" )
 if [ -e "$download_folder" ]; then
 	echo 2>&1 "WARNING: Reusing an already existing download folder:"
 	"$tree_path" 2>&1 -aNF "${download_folder}"
@@ -130,6 +130,11 @@ if [ -z "$finish_existing" ]; then
 		$("$getpocket_path" "${getpocket_extra_args[@]}" list "$@" $(printf " -d %q" "${supported_domains[@]}") "${getpocket_list_args[@]}" --format $'{resolved_url}\n')
 	)
 	if [ "${#urls[@]}" -gt 0 ]; then
+		is_dirty="$(this_git status --porcelain=v2)"
+		test "$okay_dirty" == 1 -o -z "$is_dirty" || {
+			echo 2>&1 "The repository is dirty."
+			exit 1
+		}
 		printf "Downloading %d videos\n" "${#urls[@]}"
 		printf "%s\n" "${urls[@]}" | "$youtubedl_path" >&2 "${youtubedl_extra_args[@]}" -i -a - || true
 	fi
@@ -158,7 +163,6 @@ unset downloaded_files f
 
 
 cd "$root_folder"
-RRMDIR_QUIET=1 "$selfdir/rrmdir" "${download_folder}"
 
 
 "$selfdir/pocket-videos-remove-downloaded.sh" --getpocket-path "$getpocket_path"
