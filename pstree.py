@@ -16,6 +16,7 @@ def main(*, args, prog):
 	def render():
 		return "\n".join(
 			p.render(
+				include_pids=opts.include_pids,
 				exclude_pids=opts.exclude_pids,
 				include_users=opts.include_users,
 				exclude_users=opts.exclude_users,
@@ -237,6 +238,7 @@ class TreeNode(object):
 
 	def render(self, *,
 		max_width=None,
+		include_pids=None,
 		exclude_pids=None,
 		include_users=None,
 		exclude_users=None,
@@ -246,6 +248,7 @@ class TreeNode(object):
 		result = ""
 		width = max_width
 		for piece in self.render_gen(
+			include_pids=include_pids,
 			exclude_pids=exclude_pids,
 			include_users=include_users,
 			exclude_users=exclude_users,
@@ -289,6 +292,7 @@ class TreeNode(object):
 		return False
 
 	def render_gen(self, *,
+		include_pids=None,
 		exclude_pids=None,
 		include_users=None,
 		exclude_users=None,
@@ -311,7 +315,8 @@ class TreeNode(object):
 
 		def is_included():
 			return (
-				(not (include_users or include_commands)) or
+				(not (include_pids or include_users or include_commands)) or
+				(include_pids and (self.pid in include_pids)) or
 				(include_users and (self.user in include_users)) or
 				(include_commands and self.matches_one_of_regexes(self.args, include_commands))
 			)
@@ -324,36 +329,38 @@ class TreeNode(object):
 
 		explicitely_included = is_included() and not is_excluded()
 
+		if include_pids and self.pid in include_pids:
+			include_pids=None
+			exclude_pids=None
+			include_users=None
+			exclude_users=None
+			include_commands=None
+			exclude_commands=None
+
+		def render_child_gen(node, *, child_has_siblings_after):
+			yield from node.render_gen(
+				include_pids=include_pids,
+				exclude_pids=exclude_pids,
+				include_users=include_users,
+				exclude_users=exclude_users,
+				include_commands=include_commands,
+				exclude_commands=exclude_commands,
+				has_siblings_after=child_has_siblings_after,
+				_indent=(_indent + self.indent_child(has_uncles_after=has_siblings_after) if _has_parent else _indent),
+				_has_parent=True,
+			)
+
 		def render_children():
 			renderings = []
 			for node in self.children:
-				r = list(node.render_gen(
-					exclude_pids=exclude_pids,
-					include_users=include_users,
-					exclude_users=exclude_users,
-					include_commands=include_commands,
-					exclude_commands=exclude_commands,
-					has_siblings_after=True,
-					_indent=(_indent + self.indent_child(has_uncles_after=has_siblings_after) if _has_parent else _indent),
-					_has_parent=True,
-				))
+				r = list(render_child_gen(node, child_has_siblings_after=True))
 				if r:
 					renderings.append((node, r))
 			for n, r in renderings[:-1]:
 				yield from r
 			#TODO:vruyr:design Instead of re-rendering the last child, start from the end first
 			if renderings:
-				yield from renderings[-1][0].render_gen(
-					exclude_pids=exclude_pids,
-					include_users=include_users,
-					exclude_users=exclude_users,
-					include_commands=include_commands,
-					exclude_commands=exclude_commands,
-					has_siblings_after=False,
-					_indent=(_indent + self.indent_child(has_uncles_after=has_siblings_after) if _has_parent else _indent),
-					_has_parent=True,
-				)
-
+				yield from render_child_gen(renderings[-1][0], child_has_siblings_after=False)
 
 		children_rendering = list(render_children())
 		if explicitely_included or children_rendering:
@@ -403,16 +410,20 @@ def parse_args(*, args, prog, _args_file_already_loaded=False):
 		help="prepend all arguments loaded from specified json file to ones provided on command_line"
 	)
 	parser.add_argument(
-		"--user", "-u", dest="include_users", action="append", metavar="USERNAME", type=str,
-		help="only show process subtrees that has specified user"
-	)
-	parser.add_argument(
-		"--not-user", "-U", dest="exclude_users", action="append", metavar="USERNAME", type=str,
-		help="only show processes for specified user or its ancestors"
+		"--pid", "-p", dest="include_pids", action="append", metavar="PID", type=int, default=[],
+		help="only show process subtrees starting with specified PIDs"
 	)
 	parser.add_argument(
 		"--not-pid", "-P", dest="exclude_pids", action="append", metavar="PID", type=int, default=[],
-		help="excludes process subtrees starting from specified PID"
+		help="excludes process subtrees starting with specified PIDs"
+	)
+	parser.add_argument(
+		"--user", "-u", dest="include_users", action="append", metavar="USERNAME", type=str,
+		help="only show processes for specified user and their ancestors"
+	)
+	parser.add_argument(
+		"--not-user", "-U", dest="exclude_users", action="append", metavar="USERNAME", type=str,
+		help="only show processes not for specified user"
 	)
 	parser.add_argument(
 		"--command", "-c", dest="include_commands", action="append", metavar="REGEX", type=str, default=[],
