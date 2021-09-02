@@ -41,7 +41,7 @@ while True:
 	m = match_pasteboard(trn_p)
 	card_type, card_num, trn_date, trn_sum = m.groups()
 	trn_date = "{:04d}-{:02d}-{:02d}".format(*time.strptime(trn_date, "%B %d, %Y")[:3])
-	result = f"{trn_date} -${trn_sum} [{card_type} {card_num}] Amazon.com - Order {amazon_order_id}"
+	result = f"{trn_date} -${trn_sum} [{card_type} {card_num}] Amazon.com - Order {amazon_order_id}.pdf"
 	subprocess.run(["pbcopy"], encoding="UTF-8", input=result)
 	print(result)
 	subprocess.Popen(["afplay", "/System/Library/Sounds/Glass.aiff"])
