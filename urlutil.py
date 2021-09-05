@@ -50,6 +50,7 @@ def main(*, args, prog):
 
 def decompose(the_url):
 	scheme, netloc, path, params, query, fragment = urllib.parse.urlparse(the_url)
+	path = urllib.parse.unquote(path, errors="strict")
 	if query:
 		query = collections.OrderedDict(urllib.parse.parse_qsl(
 			query,
@@ -78,7 +79,7 @@ def compose(the_json):
 	)
 	scheme   = the_json.pop("scheme")
 	netloc   = the_json.pop("netloc")
-	path     = the_json.pop("path")
+	path     = urllib.parse.quote(the_json.pop("path"))
 	params   = the_json.pop("params")
 	query    = the_json.pop("query")
 	fragment = the_json.pop("fragment")
