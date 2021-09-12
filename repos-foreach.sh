@@ -181,7 +181,7 @@ function find-object() {
 		#TODO The --find-object option is incapable of finding commit trees. Sub-trees are okay.
 		local log_output=""
 		log_output+="$(git cat-file -t "$object_name")"$'\n'
-		log_output+="$(git -c color.ui="$color_ui" --no-pager log --raw --find-object="$object_name" 2>&1)"
+		log_output+="$(git -c color.ui="$color_ui" --no-pager log --all --graph --decorate --raw --find-object="$object_name" 2>&1)"
 		temp_output_lines_clear
 	else
 		temp_output_lines_clear
