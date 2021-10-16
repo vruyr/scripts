@@ -28,7 +28,7 @@ git_worktree_folder="$(git rev-parse --show-toplevel)"
            is_dirty=
      getpocket_path=getpocket
           tree_path=tree
-     youtubedl_path=youtube-dl
+     youtubedl_path=yt-dlp
       lockdir_path="$git_worktree_folder/.lock"
       download_all=
   supported_domains=(
@@ -100,7 +100,9 @@ fi
 unset detected_git_repo_folder
 
 
-mkdir "$lockdir_path"
+mkdir "$lockdir_path" 2>/dev/null || {
+	exit 0
+}
 atexit_rmdirs+=( "$lockdir_path" )
 
 
@@ -172,13 +174,13 @@ p='^[0-9]{8} \[([^]]+)\] .*'
 for f in *; do
 	[[ "$f" =~ $p ]] || continue
 	d="${BASH_REMATCH[1]}"
-	if [ -d "$d" ]; then
-		this_git mv --force "$f" "$d/"
+	if [ -d "$PWD/$d" ]; then
+		this_git mv --force "$PWD/$f" "$PWD/$d/"
 	elif [ -f ".routes/$d" ]; then
-		dd="$(cat ".routes/$d")"
+		dd="$(cat "$PWD/.routes/$d")"
 		if [ -n "$dd" ]; then
-			mkdir -p "$dd"
-			this_git mv -v --force "$f" "$dd/"
+			mkdir -p "$PWD/$dd"
+			this_git mv -v --force "$PWD/$f" "$PWD/$dd/"
 		fi
 	fi
 done
