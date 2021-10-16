@@ -3,6 +3,7 @@
 
 MAGICK=magick
 MAGICK_DENSITY=300
+MAGICK_LOWLIGHT_COLOR="rgba(255,255,255,0.95)"
 
 
 set -o errexit
@@ -53,7 +54,7 @@ function main() {
 	for ((i=0; i < "$num_pages"; i++)) do
 		diff_page="$workdir/diff-$i.pdf"
 		#TODO Find out why magick compare exits with non-zero exit code
-		$MAGICK compare -density "$MAGICK_DENSITY" "${one_pages[$i]}" "${two_pages[$i]}" "$diff_page" || true
+		$MAGICK compare -lowlight-color "$MAGICK_LOWLIGHT_COLOR" -density "$MAGICK_DENSITY" "${one_pages[$i]}" "${two_pages[$i]}" "$diff_page" || true
 		diff_pages+=(
 			"$diff_page"
 		)
