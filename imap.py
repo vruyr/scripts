@@ -107,7 +107,7 @@ def list_mailboxes(*, conn, show_in_json):
 	else:
 		for mailbox in mailboxes:
 			tags, sep, path = parse_imap_list_response_entry(imap_utf7_decode(mailbox))
-			print(" ".join(tags).ljust(10), sep.join(p for p in path))
+			print(" ".join(tags).ljust(12), sep.join(p for p in path))
 
 
 def imap_utf7_encode(x):
