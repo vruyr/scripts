@@ -95,7 +95,7 @@ def match_pasteboard(p, *, wait=False):
 		if not wait or m:
 			return m
 
-order_id_p = re.compile(r"(?:Order)?\s*#?(\d{3}-\d{7}-\d{7})")
+order_id_p = re.compile(r"(?i:Order(?: ID)?)?\s*#?\s*?(\d{3}-\d{7}-\d{7})")
 transaction_p = re.compile(r"^(Visa) ending in (\d+):\s+(\w+ \d+, \d+):\s*\$(\d+\.\d+)$")
 
 subprocess.run(["pbcopy"], input=b"")
