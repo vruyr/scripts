@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 
-import sys
-assert sys.version_info[:2] in [(3, 6), (3, 7), (3, 8), (3, 9)]
-import imaplib, getpass, hmac, email, shlex, subprocess, re, pathlib, json
-
+import sys, imaplib, getpass, hmac, email, shlex, subprocess, re, json
+# pip install IMAPClient==2.2.0
+from imapclient import imap_utf7
 
 #TODO (encode|decode|b["']) - fix all the binary to text conversions, remove all hard-coded encodings.
 verbosity=None
@@ -45,7 +44,7 @@ def main(opts):
 	if opts.list_mailboxes:
 		list_mailboxes(conn=conn, show_in_json=opts.show_in_json)
 	elif opts.new_mailbox is not None:
-		new_mailbox = encode_imap(opts.new_mailbox)
+		new_mailbox = imap_utf7_encode(opts.new_mailbox)
 		new_mailbox = b'"' + new_mailbox + b'"' #TODO Why do we need to quotes here and what happens if the name already has a quote.
 		conn.create(new_mailbox)
 	else:
@@ -57,7 +56,7 @@ def main(opts):
 
 
 def list_mailbox_content(*, conn, mailbox):
-		mailbox = encode_imap(mailbox)
+		mailbox = imap_utf7_encode(mailbox)
 		mailbox = b'"' + mailbox + b'"' #TODO Why do we need to quotes here and what happens if the name already has a quote.
 		response_type, response_data = conn.select(mailbox, readonly=True)
 		if response_type != "OK":
@@ -98,7 +97,7 @@ def list_mailboxes(*, conn, show_in_json):
 	if show_in_json:
 		result = []
 		for mailbox in mailboxes:
-			tags, sep, path = parse_imap_list_response_entry(decode_imap(mailbox))
+			tags, sep, path = parse_imap_list_response_entry(imap_utf7_decode(mailbox))
 			result.append({
 				"tags": list(tags),
 				"path": list(p for p in path),
@@ -107,16 +106,16 @@ def list_mailboxes(*, conn, show_in_json):
 		sys.stdout.write("\n")
 	else:
 		for mailbox in mailboxes:
-			tags, sep, path = parse_imap_list_response_entry(decode_imap(mailbox))
+			tags, sep, path = parse_imap_list_response_entry(imap_utf7_decode(mailbox))
 			print(" ".join(tags).ljust(10), sep.join(p for p in path))
 
 
-def decode_imap(x):
-	return x.replace(b"&", b"+").decode("utf-7").replace("+", "&") #TODO This is a very dirty hack
+def imap_utf7_encode(x):
+	return imap_utf7.encode(x)
 
 
-def encode_imap(x):
-	return x.replace("&", "+").encode("utf-7").replace(b"+", b"&") #TODO This is a very dirty hack
+def imap_utf7_decode(x):
+	return imap_utf7.decode(x)
 
 
 def parse_imap_list_response_entry(entry):
