@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys, imaplib, getpass, hmac, email, shlex, subprocess, re, json
+import sys, urllib.parse, imaplib, getpass, hmac, email, shlex, subprocess, re, json
 # pip install IMAPClient==2.2.0
 from imapclient import imap_utf7
 
@@ -12,11 +12,20 @@ def main(opts):
 	global verbosity
 	verbosity = opts.verbosity
 
-	server  = opts.server or input("Server: ")
-	username = opts.username or input("Username: ") or getpass.getuser()
-	password = opts.password or get_password(server, username)
+	url = urllib.parse.urlsplit(opts.account)
+	assert url.scheme == "imap", (opts.account, url)
+	assert not url.path,         (opts.account, url)
+	assert not url.query,        (opts.account, url)
+	assert not url.fragment,     (opts.account, url)
+	username, password, hostname, port = (url.username, url.password, url.hostname, url.port)
+	username = urllib.parse.unquote(username)
+	port = port or imaplib.IMAP4_SSL_PORT
 
-	conn = imaplib.IMAP4_SSL(server)
+	server = opts.server or hostname or input("Server Hostname: ")
+	username = opts.username or username or input("Username: ") or getpass.getuser()
+	password = opts.password or password or get_password(server, username)
+
+	conn = imaplib.IMAP4_SSL(server, port=port)
 	show_msg(2, "Server Capabilities: {}", ", ".join(conn.capabilities))
 
 	if "AUTH=CRAM-MD5" in conn.capabilities:
@@ -166,67 +175,24 @@ def show_msg(verbosity_, msg, *args, **kwargs):
 def sysmain():
 	import argparse
 	parser = argparse.ArgumentParser()
-	parser.add_argument(
-		"--verbose", "-v",
-		dest="verbosity",
-		action="count",
-		default=0,
-		help="increase verbosity, can be used multiple times"
-	)
-	parser.add_argument(
-		"--quiet", "-q",
-		dest="_negative_verbosity",
-		action="count",
-		default=0,
-		help="decrease verbosity, can be used multiple times"
-	)
-	parser.add_argument(
-		"--server", "-s",
-		dest="server",
-		action="store",
-		metavar="HOST",
-		help="host name or IP address of the IMAP server"
-	)
-	parser.add_argument(
-		"--user", "-u",
-		dest="username",
-		action="store",
-		default=None,
-		metavar="USERNAME",
-		help="default is {}".format(getpass.getuser())
-	)
-	parser.add_argument(
-		"--password", "-p",
-		dest="password",
-		action="store",
-		metavar="PASSWORD"
-	)
-	parser.add_argument(
-		"--mailbox", "-m",
-		dest="mailbox",
-		action="store",
-		metavar="MAILBOX",
-		default=None,
-	)
-	parser.add_argument(
-		"--new-mailbox", "-n",
-		dest="new_mailbox",
-		action="store",
-		metavar="MAILBOX",
-		default=None,
-	)
-	parser.add_argument(
-		"--list-mailboxes", "-l",
-		dest="list_mailboxes",
-		action="store_true",
-		default=False,
-	)
-	parser.add_argument(
-		"--json", "-j",
-		dest="show_in_json",
-		action="store_true",
-		default=False,
-	)
+
+	output_options = parser.add_argument_group("Output Options")
+	output_options.add_argument("--json", "-j",    dest="show_in_json",        action="store_true", default=False)
+	output_options.add_argument("--verbose", "-v", dest="verbosity",           action="count",      default=0, help="increase verbosity, can be used multiple times")
+	output_options.add_argument("--quiet", "-q",   dest="_negative_verbosity", action="count",      default=0, help="decrease verbosity, can be used multiple times")
+
+
+	connectivity = parser.add_argument_group("Connectivity")
+	connectivity.add_argument("--account", "-a", dest="account", action="store", metavar="IMAP_URL", help="IMAP account to connect to as an imap:// url")
+	connectivity.add_argument("--server", "-s",   dest="server",   action="store",               metavar="HOST",     help="host name or IP address of the IMAP server")
+	connectivity.add_argument("--user", "-u",     dest="username", action="store", default=None, metavar="USERNAME", help="default is {}".format(getpass.getuser()))
+	connectivity.add_argument("--password", "-p", dest="password", action="store",               metavar="PASSWORD")
+
+	actions = parser.add_argument_group("Actions")
+	actions.add_argument("--mailbox", "-m",        dest="mailbox",        action="store", metavar="MAILBOX", default=None)
+	actions.add_argument("--new-mailbox", "-n",    dest="new_mailbox",    action="store", metavar="MAILBOX", default=None)
+	actions.add_argument("--list-mailboxes", "-l", dest="list_mailboxes", action="store_true",               default=False)
+
 	opts = parser.parse_args()
 	opts.verbosity -= opts._negative_verbosity
 	del opts._negative_verbosity
