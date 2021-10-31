@@ -75,11 +75,10 @@ def list_mailbox_content(*, conn, mailbox):
 			expected_envelope_start = b"%b (RFC822 {%d}"% (msgn, len(message_data))
 			assert envelope_start == expected_envelope_start
 			assert envelope_end == b")"
-			rfc822msg = message_data.decode("UTF-8")
-			msg = email.message_from_string(rfc822msg)
+			msg = email.message_from_bytes(message_data)
 			print(
 				"{n}\nFrom: {f}\nTo: {t}\nDate: {d}\nSubject: {s}\nMessage-ID: {i}".format(
-					n=msgn.decode("UTF-8"),
+					n=msgn.decode("ASCII"),
 					f=msg["From"],
 					t=msg["To"],
 					d=msg["Subject"],
