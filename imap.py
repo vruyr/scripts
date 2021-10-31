@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from argparse import Namespace
+from os import name
 import sys, urllib.parse, imaplib, getpass, hmac, email, shlex, subprocess, re, json
 # pip install IMAPClient==2.2.0
 from imapclient import imap_utf7
@@ -14,16 +16,16 @@ def main(opts):
 
 	url = urllib.parse.urlsplit(opts.account)
 	assert url.scheme == "imap", (opts.account, url)
-	assert not url.path,         (opts.account, url)
 	assert not url.query,        (opts.account, url)
 	assert not url.fragment,     (opts.account, url)
 	username, password, hostname, port = (url.username, url.password, url.hostname, url.port)
 	username = urllib.parse.unquote(username)
-	port = port or imaplib.IMAP4_SSL_PORT
 
-	server = opts.server or hostname or input("Server Hostname: ")
+	port     = port or imaplib.IMAP4_SSL_PORT
+	server   = opts.server   or hostname or input("Server Hostname: ")
 	username = opts.username or username or input("Username: ") or getpass.getuser()
 	password = opts.password or password or get_password(server, username)
+	path     = opts.path     or url.path or ""
 
 	conn = imaplib.IMAP4_SSL(server, port=port)
 	show_msg(2, "Server Capabilities: {}", ", ".join(conn.capabilities))
@@ -50,21 +52,74 @@ def main(opts):
 		show_msg(-1, "Error: No known authentication mechanisms are supported by the server.")
 		return
 
-	if opts.list_mailboxes:
-		list_mailboxes(conn=conn, show_in_json=opts.show_in_json)
-	elif opts.new_mailbox is not None:
-		new_mailbox = imap_utf7_encode(opts.new_mailbox)
-		new_mailbox = b'"' + new_mailbox + b'"' #TODO Why do we need to quotes here and what happens if the name already has a quote.
-		conn.create(new_mailbox)
+	personal_ns, otherusers_ns, shared_ns = get_namespaces(conn)
+	assert len(personal_ns) == 1, personal_ns
+	personal_ns = personal_ns[0]
+	assert len(personal_ns) == 2, personal_ns
+	personal_ns_prefix, personal_ns_delimiter = personal_ns
+	assert personal_ns_prefix == "", (personal_ns_prefix,)
+
+	path_sep = "/"
+	path = path.strip(path_sep)
+	path = path.split(path_sep) if path else []
+
+	if path:
+		mailbox = personal_ns_delimiter.join(path)
+		#TODO:vruyr:bugs Special chars, such as hierarchy delimiter, in path components should be escaped.
+		list_mailbox_content(conn=conn, mailbox=mailbox)
 	else:
-		if opts.mailbox is None:
-			opts.mailbox = "INBOX"
-
-	if opts.mailbox is not None:
-		list_mailbox_content(conn=conn, mailbox=opts.mailbox)
+		list_mailboxes(conn=conn, show_in_json=opts.show_in_json)
 
 
-def list_mailbox_content(*, conn, mailbox):
+def get_namespaces(conn: imaplib.IMAP4):
+	response_type, response_data = conn.namespace()
+	assert response_type == "OK"
+	assert type(response_data) == list and len(response_data) == 1
+	namespace_response = response_data[0].decode("ASCII")
+
+	# https://www.atmail.com/blog/imap-101-manual-imap-sessions/
+	# https://datatracker.ietf.org/doc/html/rfc2342.html
+
+	namespaces = []
+	i = 0
+	size = len(namespace_response)
+	prefix_and_delimiter_p = re.compile(r'"([^"]*)" "([^"]*)"')
+	while i < size:
+		if namespace_response[i] == " ":
+			i += 1
+			continue
+
+		if namespace_response[i:i+3] == "NIL":
+			namespaces.append(None)
+			i += 3
+			continue
+
+		if namespace_response[i] == "(":
+			i += 1
+			prefixes_and_delimiters = []
+			while namespace_response[i] == "(":
+				j = namespace_response.find(")", i + 1)
+				assert j >= 0, (i, j, namespace_response)
+				prefix_and_delimiter = namespace_response[i+1:j]
+				try:
+					prefix, delimiter = prefix_and_delimiter_p.fullmatch(prefix_and_delimiter).groups()
+					prefixes_and_delimiters.append((prefix, delimiter))
+				except:
+					print(prefix_and_delimiter)
+				i = j+1
+			assert namespace_response[i] == ")", (i, namespace_response)
+			i += 1
+			namespaces.append(tuple(prefixes_and_delimiters))
+			continue
+
+		assert False, (i, namespace_response[i:], namespace_response)
+
+	personal_ns, otherusers_ns, shared_ns = namespaces
+
+	return personal_ns, otherusers_ns, shared_ns
+
+
+def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox):
 		mailbox = imap_utf7_encode(mailbox)
 		mailbox = b'"' + mailbox + b'"' #TODO Why do we need to quotes here and what happens if the name already has a quote.
 		response_type, response_data = conn.select(mailbox, readonly=True)
@@ -183,15 +238,11 @@ def sysmain():
 
 
 	connectivity = parser.add_argument_group("Connectivity")
-	connectivity.add_argument("--account", "-a", dest="account", action="store", metavar="IMAP_URL", help="IMAP account to connect to as an imap:// url")
+	connectivity.add_argument("--account", "-a",  dest="account",  action="store", metavar="IMAP_URL", help="IMAP account to connect to as an imap://user@hostname/mailbox/path url")
 	connectivity.add_argument("--server", "-s",   dest="server",   action="store",               metavar="HOST",     help="host name or IP address of the IMAP server")
 	connectivity.add_argument("--user", "-u",     dest="username", action="store", default=None, metavar="USERNAME", help="default is {}".format(getpass.getuser()))
-	connectivity.add_argument("--password", "-p", dest="password", action="store",               metavar="PASSWORD")
-
-	actions = parser.add_argument_group("Actions")
-	actions.add_argument("--mailbox", "-m",        dest="mailbox",        action="store", metavar="MAILBOX", default=None)
-	actions.add_argument("--new-mailbox", "-n",    dest="new_mailbox",    action="store", metavar="MAILBOX", default=None)
-	actions.add_argument("--list-mailboxes", "-l", dest="list_mailboxes", action="store_true",               default=False)
+	connectivity.add_argument("--password",       dest="password", action="store",               metavar="PASSWORD")
+	connectivity.add_argument("--path", "-p",     dest="path",     action="store",               metavar="MAILBOX_PATH")
 
 	opts = parser.parse_args()
 	opts.verbosity -= opts._negative_verbosity

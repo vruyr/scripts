@@ -12,7 +12,7 @@ def main():
 
 	for label, url in read_config("accounts"):
 		p = subprocess.run(
-			["imap.py", "-a", url, "-l", "--json"],
+			["imap.py", "-a", url, "--json"],
 			stdout=subprocess.PIPE,
 			stderr=subprocess.PIPE,
 			shell=False
