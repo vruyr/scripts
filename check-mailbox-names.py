@@ -10,9 +10,9 @@ CONFIG_DIR = pathlib.Path.home() / ".config" / pathlib.Path(__file__).stem
 def main():
 	folders = collections.defaultdict(list)
 
-	for label, server, username in read_config("accounts"):
+	for label, url in read_config("accounts"):
 		p = subprocess.run(
-			["imap.py", "-l", "--json", "-s", server, "-u", username],
+			["imap.py", "-a", url, "-l", "--json"],
 			stdout=subprocess.PIPE,
 			stderr=subprocess.PIPE,
 			shell=False
