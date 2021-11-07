@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+set -o errexit
 
 color_ui=auto
 if [ -t 1 ]; then
@@ -9,15 +10,15 @@ fi
 
 function main() {
 	if [ $# -eq 0 ]; then
+		#shellcheck disable=SC2016
 		set -- echo '$PWD'
 	fi
 
-	old_IFS="$IFS"
-	IFS=$'\n'
-	all_repos=(
-		$(jq <~/.repos.json -r '.repositories[]' | tr -d '\r')
+	all_repos=()
+	while IFS='' read -r line; do [ "$line" ] && all_repos+=("$line"); done < <(
+		jq <~/.repos.json -r '.repositories[]' | tr -d '\r'
 	)
-	IFS="$old_IFS"
+	unset line
 
 	local r
 	for r in "${all_repos[@]}"; do
@@ -25,7 +26,8 @@ function main() {
 		(
 			local curdir
 			if [ "$(git -C "$r" --git-dir "$r" config --get --bool core.bare)" == "false" ]; then
-				local w="$(command git -C "$r" --git-dir "$r" rev-parse --show-toplevel)"
+				local w
+				w="$(command git -C "$r" --git-dir "$r" rev-parse --show-toplevel)"
 				local w=${w:-${r%/.git}}
 				if [ "${r#"$w"}" != ".git" ]; then
 					export GIT_DIR="$r"
@@ -52,7 +54,7 @@ function incoming() {
 	at_least_one_not_skipped=
 	at_least_one_skipped=
 	output_messages=()
-	for r in `git remote`; do
+	for r in $(git remote); do
 		u="$(git remote get-url "$r")"
 
 		local must_skip=1
@@ -75,23 +77,21 @@ function incoming() {
 		at_least_one_not_skipped=1
 
 		exclusions=()
-		old_IFS="$IFS"
-		IFS=$'\n'
-		excluded_refs=(
-			$(git config --get-all "remote.$r.repos-ignore-refs" | sed 's|^refs/heads/||')
+		excluded_refs=()
+		while IFS='' read -r line; do [ "$line" ] && excluded_refs+=("$line"); done < <(
+			git config --get-all "remote.$r.repos-ignore-refs" | sed 's|^refs/heads/||'
 		)
-		IFS="$old_IFS"
+		unset line
 		for exref in "${excluded_refs[@]}"; do
 			exclusions+=( "--exclude" "$r/$exref" )
 		done
 
 		git fetch --prune -q "$r"
-		old_IFS="$IFS"
-		IFS=$'\n'
-		local -a nolocalrefs=(
-			$(printf "\n^%s" $(git show-ref | grep -v " refs/remotes/" | cut -b -40))
+		local -a nolocalrefs=()
+		while IFS='' read -r line; do [ "$line" ] && nolocalrefs+=("$line"); done < <(
+			printf "\n^%s" $(git show-ref | grep -v " refs/remotes/" | cut -b -40)
 		)
-		IFS="$old_IFS"
+		unset line
 
 		any_new_tags="$(git fetch --prune --prune-tags --tags --dry-run "$r" 2>&1 | sed $'s/^/\t\t/')"
 
@@ -105,7 +105,7 @@ function incoming() {
 		fi
 	done
 
-	if [ -n "$at_least_one_not_skipped" -a -z "$at_least_one_skipped" ]; then
+	if [ -n "$at_least_one_not_skipped" ] && [ -z "$at_least_one_skipped" ]; then
 		if [ "${#output_messages[@]}" -ne 0 ]; then
 			printf "%s%s %s%s\n" $'\x1b[0;42;30m' '•' "$(pwd)" $'\x1b[0m'
 			printf "%s" "${output_messages[@]}"
@@ -136,12 +136,13 @@ function object-type() {
 	fi
 	local object_nameish="$1"; shift
 
-	local object_type="$(git cat-file -t "$object_nameish" 2>/dev/null)"
-	if [ $? -ne 0 -o -z "$object_type" ]; then
+	local object_type
+	if ! object_type="$(git cat-file -t "$object_nameish" 2>/dev/null)" || [ -z "$object_type" ]; then
 		return 0
 	fi
 
-	local object_sha="$(git rev-parse "$object_nameish")"
+	local object_sha
+	object_sha="$(git rev-parse "$object_nameish")"
 
 	printf "%s\t%s\t%s\n" "$object_sha" "$object_type" "$(pwd)"
 }
@@ -153,8 +154,9 @@ temp_output_lines_num_displayed=0
 function temp_output_lines_printf() {
 	[ -t 1 ] || return
 
+	#shellcheck disable=SC2059
 	printf "$@"
-	(( temp_output_lines_num_displayed++ ))
+	(( temp_output_lines_num_displayed++ )) || true
 }
 
 
@@ -176,8 +178,7 @@ function find-object() {
 	local object_nameish="$1"; shift
 
 	temp_output_lines_printf 'Searching in %s\n' "$PWD"
-	object_name="$(git rev-parse --quiet --verify "$object_nameish^{object}")"
-	if [ $? -eq 0 -a -n "$object_name" ]; then
+	if object_name="$(git rev-parse --quiet --verify "$object_nameish^{object}")" && [ -n "$object_name" ]; then
 		#TODO The --find-object option is incapable of finding commit trees. Sub-trees are okay.
 		local log_output=""
 		log_output+="$(git cat-file -t "$object_name")"$'\n'

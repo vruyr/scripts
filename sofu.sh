@@ -4,14 +4,14 @@ function check_version() {
 	local versinfo="$1"
 	shift
 	for i in $(seq $#); do
-		local x="$versinfo[$((i - 1))]"
+		local x="${versinfo}[$((i - 1))]"
 		test "${!x}" -lt "${!i}" && return 1
 		test "${!x}" -gt "${!i}" && return 0
 	done
 	return 0;
 }
 
-declare -ar MIN_BASH_VERS=(3 2 57)
+declare -a MIN_BASH_VERS=(3 2 57)
 if ! check_version BASH_VERSINFO "${MIN_BASH_VERS[@]}"; then
 	printf >&2 "FATAL: Unsupported bash version:\n"
 	printf >&2 "\t%s\n" "$(declare -p BASH_VERSINFO 2>&1)" "$(declare -p MIN_BASH_VERS 2>&1)"
@@ -98,18 +98,20 @@ function main() {
 		esac
 	done
 
-	if [ ""$homebrew_bundle_check" -o "$homebrew_outdated" -o "$homebrew_cask_outdated" -o $homebrew_bundle_cleanup" ]; then
+	if [ "$homebrew_bundle_check" ] || [ "$homebrew_outdated" ] || [ "$homebrew_cask_outdated" ] || [ "$homebrew_bundle_cleanup" ]; then
 		echo "--- brew update"
-		local o="$(brew update)"
-		if [ -n "$o" -a "$o" != "Already up-to-date." ]; then
+		local o
+		o="$(brew update)"
+		if [ -n "$o" ] && [ "$o" != "Already up-to-date." ]; then
 			echo "$o" | indent
 		fi
 		eval_indent ''
 	fi
 	if [ "$homebrew_bundle_check" ]; then
 		echo "--- brew bundle check"
-		local o="$(brew bundle check --verbose --file="$BREW_BUNDLE_FILE_PATH")"
-		if [ -n "$o" -a "$o" != "The Brewfile's dependencies are satisfied." ]; then
+		local o
+		o="$(brew bundle check --verbose --file="$BREW_BUNDLE_FILE_PATH")"
+		if [ -n "$o" ] && [ "$o" != "The Brewfile's dependencies are satisfied." ]; then
 			echo "$o" | indent
 		fi
 	fi
@@ -124,6 +126,7 @@ function main() {
 	if [ "$homebrew_bundle_cleanup" ]; then
 		echo "--- brew bundle cleanup"
 		#TODO The `brew bundle cleanup` has a bug where it doesn't recognize formulae from "core" tap spelled out with their fully-qualified names (e.g. homebrew/core/tmux).
+		#shellcheck disable=SC2016
 		eval_indent 'cat "$BREW_BUNDLE_FILE_PATH" | sed "s|^brew \"homebrew/core/|brew \"|" | brew bundle cleanup --file=-'
 	fi
 	if [ "$npm_outdated" ]; then
@@ -137,6 +140,7 @@ function main() {
 	if [ "$pyv_outdated" ]; then
 		if [ -n "$PYV_ROOT_DIR" ]; then
 			echo "--- pyv: $PYV_ROOT_DIR"
+			#shellcheck disable=SC2016
 			eval_indent 'show_pyv_updates "$PYV_ROOT_DIR"'
 		fi
 	fi
@@ -154,8 +158,9 @@ function main() {
 	fi
 	if [ "$macossystem_outdated" ]; then
 		echo "--- softwareupdate --list"
-		local o="$(softwareupdate --list 2>&1)"
-		if [ -n "$o" -a "$o" != $'No new software available.\nSoftware Update Tool\n\nFinding available software' ]; then
+		local o
+		o="$(softwareupdate --list 2>&1)"
+		if [ -n "$o" ] && [ "$o" != $'No new software available.\nSoftware Update Tool\n\nFinding available software' ]; then
 			echo "$o" | indent
 		fi
 	fi
@@ -167,10 +172,12 @@ function show_pyv_updates() {
 	rootdir="$1"
 	local output=
 	for venv in $(compgen -A directory "$rootdir/"); do
-		local venv_name="$(basename "$venv")"
+		local venv_name
+		venv_name="$(basename "$venv")"
 		if [ "${venv_name:0:1}" == "." ]; then
 			continue
 		fi
+		#shellcheck disable=SC2016
 		output="$(eval_indent 'PYTHONWARNINGS="ignore:DEPRECATION" $venv/bin/pip --disable-pip-version-check list --outdated --not-required --format=json | jq -r '\''.[]|.name + "==" + .version + " < " + .latest_version'\')"
 		if [ -z "$output" ]; then
 			continue
@@ -191,6 +198,5 @@ function indent() {
 }
 
 
-if ! $(return >/dev/null 2>&1); then
-	main "$@"
-fi
+return >/dev/null 2>&1 || true
+main "$@"
