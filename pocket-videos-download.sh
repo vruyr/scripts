@@ -14,12 +14,12 @@ function atexit() {
 
 
 function abspath() {
-	python3 -c 'import sys, pathlib; print(str(pathlib.Path(sys.argv[1]).absolute()))' "$1"
+	python3 -c 'import os, sys, pathlib; print(str( pathlib.Path(sys.argv[2] or os.getcwd()) / pathlib.Path(sys.argv[1]) ))' "$1" "$2"
 }
 
 
             selfdir="$(cd "$(dirname "$0")" && pwd)"
-    git_repo_folder="$(abspath "${git_repo_folder:-$HOME/.xgit/videos}")"
+    git_repo_folder="$(git rev-parse --git-dir)"
 git_worktree_folder="$(git rev-parse --show-toplevel)"
         root_folder=
     download_folder=
@@ -91,7 +91,7 @@ if [ ! -d "$root_folder/.routes" ]; then
 	exit 1
 fi
 
-detected_git_repo_folder="$(abspath "$(git -C "$git_worktree_folder" rev-parse --git-dir)")"
+detected_git_repo_folder="$(abspath "$(git -C "$git_worktree_folder" rev-parse --git-dir)" "$git_worktree_folder")"
 if [ "$git_repo_folder" != "$detected_git_repo_folder" ]; then
 	declare >&2 -p git_worktree_folder git_repo_folder detected_git_repo_folder
 	echo >&2 "Failed to identify git repository and/or worktree folders. Aborting."
