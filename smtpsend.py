@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 from __future__ import print_function
-import sys; assert sys.version_info[:2] in [(3, 5), (3, 6), (3, 7)]
-import argparse, logging, email.mime.text, getpass, socket, smtplib, subprocess, shlex
+import sys, argparse, logging, email.mime.text, getpass, socket, smtplib, subprocess, shlex
 
 
 # TODO change --smtp parameter to --server and start using `secret` just like imap.py does
@@ -41,7 +40,9 @@ def main(argv=None):
 		if opts.debug:
 			print("-" * 40)
 
-	with smtplib.SMTP() as s:
+	source_address = (opts.local_address, 0) if opts.local_address else None
+	local_hostname = opts.local_hostname if opts.local_hostname else None
+	with smtplib.SMTP(local_hostname=local_hostname, source_address=source_address) as s:
 		if opts.debug:
 			s.set_debuglevel(2)
 		s.connect(opts.smtp_server)
@@ -100,6 +101,8 @@ def _parse_args(argv):
 	parser.add_argument("--cc", "-c", dest="msg_cc", action="append", default=None)
 	parser.add_argument("--bcc", "-b", dest="msg_bcc", action="append", default=None)
 	parser.add_argument("--subject", "-s", dest="msg_subject", action="store", default=None)
+	parser.add_argument("--local-address", dest="local_address", action="store", default=None)
+	parser.add_argument("--local-hostname", dest="local_hostname", action="store", default=None)
 	parser.add_argument("file", nargs=None, help="stdin if -")
 	opts = parser.parse_args(argv[1:] if argv is not None else None)
 	if (opts.msg_to, opts.msg_cc, opts.msg_bcc) == (None, None, None):
