@@ -16,7 +16,7 @@ function main() {
 
 	all_repos=()
 	while IFS='' read -r line; do [ "$line" ] && all_repos+=("$line"); done < <(
-		jq <~/.repos.json -r '.repositories[]' | tr -d '\r'
+		jq <~/.rgit.json -r '.repositories[]' | tr -d '\r'
 	)
 	unset line
 
@@ -79,7 +79,7 @@ function incoming() {
 		exclusions=()
 		excluded_refs=()
 		while IFS='' read -r line; do [ "$line" ] && excluded_refs+=("$line"); done < <(
-			git config --get-all "remote.$r.repos-ignore-refs" | sed 's|^refs/heads/||'
+			git config --get-all "remote.$r.rgit-ignore-refs" | sed 's|^refs/heads/||'
 		)
 		unset line
 		for exref in "${excluded_refs[@]}"; do
@@ -131,7 +131,7 @@ function incoming() {
 
 function object-type() {
 	if [ "$#" -ne 1 ]; then
-		echo >&2 "USAGE: repos-foreach.sh object-type <object_nameish>"
+		echo >&2 "USAGE: rgit-foreach.sh object-type <object_nameish>"
 		return 1
 	fi
 	local object_nameish="$1"; shift
@@ -172,7 +172,7 @@ function temp_output_lines_clear() {
 
 function find-object() {
 	if [ "$#" -ne 1 ]; then
-		echo >&2 "USAGE: repos-foreach.sh object-type <object_nameish>"
+		echo >&2 "USAGE: rgit-foreach.sh object-type <object_nameish>"
 		return 1
 	fi
 	local object_nameish="$1"; shift
