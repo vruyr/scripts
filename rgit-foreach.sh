@@ -38,7 +38,7 @@ function main() {
 			fi
 
 			cd "$curdir"
-			eval "$@"
+			"$@"
 		)
 	done
 }
@@ -87,9 +87,9 @@ function incoming() {
 		done
 
 		git fetch --prune -q "$r"
-		local -a nolocalrefs=()
-		while IFS='' read -r line; do [ "$line" ] && nolocalrefs+=("$line"); done < <(
-			printf "\n^%s" $(git show-ref | grep -v " refs/remotes/" | cut -b -40)
+		local -a exclude_local_refs=()
+		while IFS='' read -r line; do [ "$line" ] && exclude_local_refs+=("^$line"); done < <(
+			git show-ref | grep -v " refs/remotes/" | cut -b -40
 		)
 		unset line
 
@@ -99,8 +99,8 @@ function incoming() {
 			output_messages+=( $'\n' "$any_new_tags" )
 		fi
 
-		if [ -n "$(git -P log --oneline "${exclusions[@]}" --remotes="$r" "${nolocalrefs[@]}" -- )" ]; then
-			l="$(git -c color.ui="$color_ui" -P lg -10 --boundary "${exclusions[@]}" --remotes="$r" "${nolocalrefs[@]}" -- | sed $'s/^/\t\t/')"
+		if [ -n "$(git -P log --oneline "${exclusions[@]}" --remotes="$r" "${exclude_local_refs[@]}" -- )" ]; then
+			l="$(git -c color.ui="$color_ui" -P lg -10 --boundary "${exclusions[@]}" --remotes="$r" "${exclude_local_refs[@]}" -- | sed $'s/^/\t\t/')"
 			output_messages+=( "$(printf "\n\t%s\n%s\x1b[0m\n" "$r" "$l")" )
 		fi
 	done
@@ -201,7 +201,7 @@ function find-object() {
 
 
 function starts_with() {
-	test "${1#$2}" != "$1"
+	test "${1#"$2"}" != "$1"
 }
 
 
