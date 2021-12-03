@@ -17,6 +17,9 @@ import sys, locale, os, xml.dom.minidom, email.message, subprocess
 import docopt
 
 
+CHAR_NBSP="\u00A0" # No-Break Space
+
+
 def main(*, args, prog):
 	locale.setlocale(locale.LC_ALL, "")
 
@@ -72,7 +75,7 @@ def main(*, args, prog):
 	body.appendChild(text_container := doc.createElement("div"))
 	text_container.setAttribute("class", "text")
 	for line in data.splitlines():
-		line = line.replace(" ", "\u00A0") # No-Break Space
+		line = line.replace(" ", CHAR_NBSP) if line else CHAR_NBSP
 		text_container.appendChild(line_container := doc.createElement("div"))
 		line_container.appendChild(doc.createTextNode(line))
 		line_container.setAttribute("class", "line")
