@@ -314,11 +314,12 @@ def smain(argv=None):
 		if sys.platform == "win32":
 			asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-		return asyncio.get_event_loop().run_until_complete(
+		return asyncio.run(
 			main(
 				args=argv[1:],
 				prog=argv[0]
-			)
+			),
+			debug=False,
 		)
 	except KeyboardInterrupt:
 		print(file=sys.stderr)
