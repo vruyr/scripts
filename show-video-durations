@@ -75,7 +75,7 @@ async def main(*, args, prog):
 			if num_unique_days:
 				avg_daily_increase = format_seconds((self.duration * 1.0 / num_unique_days), speed=playback_rate).lstrip()
 			widths[1] = max(widths[1], len(avg_daily_increase))
-			return f"{duration:>{widths[0]}} [{avg_daily_increase:>{widths[1]}} daily] {self.count:>3} {format_remaining_count(self.remaining)}{os.path.normpath(self.path)}\n"
+			return f"{duration:>{widths[0]}} [{avg_daily_increase:>{widths[1]}} daily] {self.count:>3n} {format_remaining_count(self.remaining)}{os.path.normpath(self.path)}\n"
 
 	path_durations = collections.OrderedDict()
 	files_failed = collections.OrderedDict()
@@ -142,7 +142,7 @@ async def main(*, args, prog):
 			await log.put(f"{files_failed}\n")
 
 	def format_remaining_count(r, *, min_width=3, padding_right=" "):
-		return f"{(r):>{min_width}}{padding_right}" if r else ""
+		return f"{(r):>{min_width}n}{padding_right}" if r else ""
 
 	pending_tasks.append(
 		asyncio.ensure_future(duration_consumer(isatty=sys.stdout.isatty()))
@@ -281,7 +281,7 @@ def format_seconds(seconds, *, subsecond=False, speed=1.0):
 	hours, minutes = divmod(minutes, 60)
 	result = ""
 	if hours:
-		result += f"{hours:>3}h"
+		result += f"{hours:>4n}h"
 	else:
 		result += "    "
 	if result or minutes:
