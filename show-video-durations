@@ -75,7 +75,7 @@ async def main(*, args, prog):
 			if num_unique_days:
 				avg_daily_increase = format_seconds((self.duration * 1.0 / num_unique_days), speed=playback_rate).lstrip()
 			widths[1] = max(widths[1], len(avg_daily_increase))
-			return f"{duration:>{widths[0]}} [{avg_daily_increase:>{widths[1]}} daily] {self.count:>3n} {format_remaining_count(self.remaining)}{os.path.normpath(self.path)}\n"
+			return f"{duration:>{widths[0]}} [{avg_daily_increase:>{widths[1]}} daily] {self.count:>5n} {format_remaining_count(self.remaining)}{os.path.normpath(self.path)}\n"
 
 	path_durations = collections.OrderedDict()
 	files_failed = collections.OrderedDict()
