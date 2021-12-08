@@ -10,8 +10,7 @@ fi
 
 function main() {
 	if [ $# -eq 0 ]; then
-		#shellcheck disable=SC2016
-		set -- echo '$PWD'
+		set -- pwd
 	fi
 
 	all_repos=()
@@ -22,10 +21,12 @@ function main() {
 
 	IFS=':' read -ra extra_search_roots <<< "${RGITFOREACHROOTS}"
 
-	while IFS='' read -r line; do [ "$line" ] && all_repos+=("$line"); done < <(
-		find "${extra_search_roots[@]}" -type f -name HEAD -execdir sh -c 'test -d objects -a -d refs && pwd' \; -prune
-	)
-	unset line
+	if [ "${#extra_search_roots[@]}" -gt 0 ]; then
+		while IFS='' read -r line; do [ "$line" ] && all_repos+=("$line"); done < <(
+			find "${extra_search_roots[@]}" -type f -name HEAD -execdir sh -c 'test -d objects -a -d refs && pwd' \; -prune
+		)
+		unset line
+	fi
 
 	local r
 	for r in "${all_repos[@]}"; do
