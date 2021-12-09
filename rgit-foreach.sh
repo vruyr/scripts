@@ -35,8 +35,7 @@ function main() {
 			local curdir
 			if [ "$(git -C "$r" --git-dir "$r" config --get --bool core.bare)" == "false" ]; then
 				local w
-				w="$(command git -C "$r" --git-dir "$r" rev-parse --show-toplevel)"
-				local w=${w:-${r%/.git}}
+				w="$(git -C "$r" config --default "${r%/.git}" --get core.worktree)"
 				if [ "${r#"$w"}" != ".git" ]; then
 					export GIT_DIR="$r"
 				fi
