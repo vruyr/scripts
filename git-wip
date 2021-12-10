@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+
+"""
+Usage:
+	{prog} new NEW_WIP_BRANCH_NAME [UPSTREAM_BRANCH_NAME [STARTING_POINT]]
+	{prog} rebase WIP_BRANCH_NAME
+"""
+
+import sys, locale, os, subprocess as sp
+# pip install docopt==0.6.2
+import docopt
+
+
+def main(*, args, prog):
+	locale.setlocale(locale.LC_ALL, "")
+
+	params = docopt.docopt(
+		__doc__.replace("\t", " " * 4).format(prog=os.path.basename(prog)),
+		argv=args,
+		help=True,
+		version=True,
+		options_first=False
+	)
+	verb = None
+	if params.pop("new", None):
+		verb = "new"
+		wip_branch = params.pop("NEW_WIP_BRANCH_NAME")
+		upstream_branch = params.pop("UPSTREAM_BRANCH_NAME") or git("config", "--get", "wip.defaultUpstream", stdout=sp.PIPE).stdout.strip()
+		starting_point = params.pop("STARTING_POINT") or upstream_branch
+		assert params.pop("WIP_BRANCH_NAME") is None
+		assert params.pop("rebase") == False
+	elif params.pop("rebase", None):
+		verb = "rebase"
+		wip_branch = params.pop("WIP_BRANCH_NAME")
+		assert params.pop("NEW_WIP_BRANCH_NAME") is None
+		assert params.pop("UPSTREAM_BRANCH_NAME") is None
+		assert params.pop("STARTING_POINT") is None
+	assert not params, params
+
+	wip_branch = wip_branch \
+		.removeprefix("wip/") \
+		.removeprefix("heads/wip/") \
+		.removeprefix("refs/heads/wip/")
+
+	if verb == "new":
+		try:
+			git("update-ref", "--create-reflog", "--stdin", "-z", input=(
+				"start\0"
+				f"create refs/heads/wip/{wip_branch}\0{starting_point}\0"
+				f"create refs/heads/wip/zbase/{wip_branch}\0{upstream_branch}\0"
+				f"create refs/heads/wip/zdest/{wip_branch}\0{upstream_branch}\0"
+				"prepare\0"
+				"commit\0"
+			))
+			git("branch", f"wip/{wip_branch}",       "--set-upstream-to", f"wip/zbase/{wip_branch}")
+			git("branch", f"wip/zbase/{wip_branch}", "--set-upstream-to", f"wip/zdest/{wip_branch}")
+			git("branch", f"wip/zdest/{wip_branch}", "--set-upstream-to", f"{upstream_branch}")
+		except sp.CalledProcessError as e:
+			print(repr(e.cmd), ": ", e.returncode, sep="", file=sys.stderr)
+	elif verb == "rebase":
+		assert not git("status", "--porcelain=v2", stdout=sp.PIPE).stdout
+		print(f"Detaching HEAD from {wip_branch!r}")
+		git("switch", "--detach", f"refs/heads/wip/{wip_branch}")
+		print(f"Rebasing: from base of {wip_branch!r} to HEAD onto dest of {wip_branch!r}.")
+		git("rebase", f"refs/heads/wip/zbase/{wip_branch}", "HEAD", "--onto", f"refs/heads/wip/zdest/{wip_branch}")
+		patchid_old = git("patch-id", input=git("diff", f"refs/heads/wip/zbase/{wip_branch}", f"refs/heads/wip/{wip_branch}", "--", stdout=sp.PIPE).stdout, stdout=sp.PIPE).stdout.strip()
+		patchid_new = git("patch-id", input=git("diff", f"refs/heads/wip/zdest/{wip_branch}", f"HEAD",                        "--", stdout=sp.PIPE).stdout, stdout=sp.PIPE).stdout.strip()
+		assert patchid_old == patchid_new, (patchid_old, patchid_new)
+		print(f"Updating branch {wip_branch!r}")
+		git("fetch", ".", f"+HEAD:refs/heads/wip/{wip_branch}")
+		print(f"Updating base of {wip_branch!r}")
+		git("fetch", ".", f"+refs/heads/wip/zdest/{wip_branch}:refs/heads/wip/zbase/{wip_branch}")
+		print(f"Switching to branch wip/{wip_branch!r}")
+		git("switch", f"wip/{wip_branch}")
+
+
+def git(*args, **kwargs):
+	cmd = ["git", *args]
+	return sp.run(
+		cmd,
+		shell=False,
+		check=kwargs.pop("check", True),
+		encoding=kwargs.pop("encoding", "UTF-8"),
+		**kwargs,
+	)
+
+def smain(argv=None):
+	if argv is None:
+		argv = sys.argv
+
+	try:
+		return main(
+			args=argv[1:],
+			prog=argv[0]
+		)
+	except KeyboardInterrupt:
+		print(file=sys.stderr)
+
+
+if __name__ == "__main__":
+	sys.exit(smain())
