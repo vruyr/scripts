@@ -41,6 +41,20 @@ async def main(*, args, prog):
 
 async def create_bundles(*, log):
 	"""
+	Configurations:
+		autogitbundle.<bundles_root_dir>.prefix
+			Current repo path must start with specified prefix.
+		autogitbundle.<bundles_root_dir>.suffix
+			Current repo path must end with specified suffix.
+			A bundle will be created at (bundles_root_dir + value) path.
+		autogitbundle.<bundles_root_dir>.suffixregex
+			Current repo path must end with a string that matches specified regex.
+			A bundle will be created at (bundles_root_dir + the_suffix_that_matched_value) path.
+		autogitbundle.<bundles_root_dir>.bundle
+			Besides matching prefix no additional conditions must be met.
+			A bundle will be created at (bundles_root_dir + value)
+
+
 	Example configuration:
 		[autogitbundle "~/Sync/zzz-git-bundles"]
 			prefix = ~/Sync/zzz-git-vruyr-
@@ -76,6 +90,10 @@ async def create_bundles(*, log):
 			if not re.fullmatch(re.escape(repo_path_prefix) + value, repo_path.as_posix()):
 				continue
 			repo_path_suffix = strip_prefix(repo_path.as_posix(), repo_path_prefix, enforce=True)
+		elif key == "bundle":
+			if not repo_path.as_posix().startswith(repo_path_prefix):
+				continue
+			repo_path_suffix = value
 		else:
 			await log.put(f"Unknown config key {key}")
 			continue
