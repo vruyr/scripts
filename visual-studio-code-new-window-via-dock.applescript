@@ -1,5 +1,5 @@
 #!/usr/bin/env osascript -l AppleScript
-#:AppBundleName: Visual Studio Code New Window via Dock.app
+#:AppBundleName: Visual Studio Code New Window.app
 #:CFBundleIdentifier: com.vruyr.visual-studio-code-new-window-via-dock
 
 
