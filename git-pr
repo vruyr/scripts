@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+set -o errexit
+trap "declare -p BASH_COMMAND; echo FAILED" ERR
+
+
+pr_num="$1"; shift
+worktree_root_dir="$HOME/Downloads"
+worktree_path="${worktree_root_dir}/$(basename "$(git rev-parse --show-toplevel)")-pr-$pr_num"
+
+IFS=$'\t' read base_label base_sha head_label head_sha < <( \
+	gh api "repos/:owner/:repo/pulls/$pr_num" \
+	--jq '.base.label + "\t" + .base.sha + "\t" + .head.label + "\t" + .head.sha' \
+)
+
+
+git worktree add --detach "$worktree_path"
+cd "$worktree_path"
+gh pr checkout --detach "$pr_num"
+git update-ref refs/worktree/pr-base "$base_sha"
+git update-ref refs/worktree/pr-head "$head_sha"
+git restore -S -s refs/worktree/pr-base .
+printf 'Current branch: %s (%s)\nCompare with:   %s (%s)\n' "$head_sha" "$head_label" "$base_sha" "$base_label"
+pbcopy <<<"$base_sha"
+gh pr view --web "$pr_num"
+code "$worktree_path"
+smerge "$worktree_path"
