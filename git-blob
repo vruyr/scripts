@@ -1,0 +1,6 @@
+#!/bin/sh
+
+(
+	printf 'blob %d\0' "$(stat -f %z "$1")"
+	cat "$1"
+) | shasum -a 1
