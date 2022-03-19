@@ -133,23 +133,24 @@ def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox):
 		assert len(response_data) == 1
 		msgns = response_data[0].split()
 		for msgn in msgns:
-			response_type, response_data = conn.fetch(msgn, "(RFC822)")
+			msg_part = b"RFC822.HEADER"
+			response_type, response_data = conn.fetch(msgn, b"(" + msg_part + b")")
 			assert response_type == "OK"
 			(envelope_start, message_data), envelope_end = response_data
-			expected_envelope_start = b"%b (RFC822 {%d}"% (msgn, len(message_data))
+			expected_envelope_start = b"%b (%s {%d}"% (msgn, msg_part, len(message_data))
 			assert envelope_start == expected_envelope_start
 			assert envelope_end == b")"
 			msg = email.message_from_bytes(message_data)
 			print(
-				"{n}\nFrom: {f}\nTo: {t}\nDate: {d}\nSubject: {s}\nMessage-ID: {i}".format(
+				"{n}\tDate: {d}\tFrom: {f}\tTo: {t}\tSubject: {s!r}\tMessage-ID: {i}".format(
 					n=msgn.decode("ASCII"),
+					d=msg["Date"],
 					f=msg["From"],
 					t=msg["To"],
-					d=msg["Subject"],
-					s=msg["Date"],
+					s=msg["Subject"],
 					i=msg["Message-ID"],
 				),
-				end="\n\n"
+				end="\n"
 			)
 
 
