@@ -10,6 +10,8 @@ CONFIG_DIR = pathlib.Path.home() / ".config" / pathlib.Path(__file__).stem
 def main():
 	folders = collections.defaultdict(list)
 
+	ignored_paths = set(tuple(path) for path in read_config("ignore"))
+
 	for label, url in read_config("accounts"):
 		p = subprocess.run(
 			["imap.py", "-a", url, "--json"],
@@ -21,6 +23,8 @@ def main():
 		assert not p.stderr
 		for entry in json.loads(p.stdout.decode()):
 			path = entry["path"]
+			if tuple(path) in ignored_paths:
+				continue
 			path.insert(0, label)
 			for p in path:
 				assert "/" not in p
