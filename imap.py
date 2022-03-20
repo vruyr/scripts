@@ -2,7 +2,7 @@
 
 from argparse import Namespace
 from os import name
-import sys, urllib.parse, imaplib, getpass, hmac, email, shlex, subprocess, re, json
+import sys, urllib.parse, imaplib, ssl, getpass, hmac, email, shlex, subprocess, re, json
 # pip install IMAPClient==2.2.0
 from imapclient import imap_utf7
 
@@ -15,11 +15,13 @@ def main(opts):
 	verbosity = opts.verbosity
 
 	url = urllib.parse.urlsplit(opts.account)
-	assert url.scheme == "imap", (opts.account, url)
-	assert not url.query,        (opts.account, url)
-	assert not url.fragment,     (opts.account, url)
+	assert url.scheme == "imaps", (opts.account, url)
+	assert not url.fragment,      (opts.account, url)
 	username, password, hostname, port = (url.username, url.password, url.hostname, url.port)
 	username = urllib.parse.unquote(username)
+	url_qs = urllib.parse.parse_qs(url.query)
+	url_qs_ssl = url_qs.pop("ssl", None)
+	assert not url_qs, url_qs
 
 	port     = port or imaplib.IMAP4_SSL_PORT
 	server   = opts.server   or hostname or input("Server Hostname: ")
@@ -27,7 +29,20 @@ def main(opts):
 	password = opts.password or password or get_password(server, username)
 	path     = opts.path     or url.path or ""
 
-	conn = imaplib.IMAP4_SSL(server, port=port)
+	ssl_context = ssl.create_default_context()
+	if url_qs_ssl is None:
+		pass
+	elif url_qs_ssl == ["promiscuous"]:
+		ssl_context.minimum_version = ssl.TLSVersion.MINIMUM_SUPPORTED
+		ssl_context.maximum_version = ssl.TLSVersion.MAXIMUM_SUPPORTED
+		ssl_context.set_ciphers("ALL:@SECLEVEL=0")
+		ssl_context.check_hostname = False
+		ssl_context.verify_mode = ssl.CERT_NONE
+	else:
+		assert False, ("Unrecognized ssl query parameter value", url_qs_ssl)
+
+	conn = imaplib.IMAP4_SSL(server, port=port, ssl_context=ssl_context)
+
 	show_msg(2, "Server Capabilities: {}", ", ".join(conn.capabilities))
 
 	if "AUTH=CRAM-MD5" in conn.capabilities:
