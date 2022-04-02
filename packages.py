@@ -1,11 +1,11 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import subprocess, datetime, os
 
 packages = []
 for p in subprocess.check_output(["pkgutil", "--pkgs"]).splitlines():
 	pinfo = {}
-	for f in subprocess.check_output(["pkgutil", "--pkg-info", p]).splitlines():
+	for f in subprocess.check_output(["pkgutil", "--pkg-info", p], encoding="UTF-8").splitlines():
 		key, value = f.split(": ")
 		pinfo[key] = value
 	pinfo["install-time"] = datetime.datetime.fromtimestamp(int(pinfo["install-time"]))
@@ -19,5 +19,5 @@ for p in subprocess.check_output(["pkgutil", "--pkgs"]).splitlines():
 packages = sorted(packages)
 
 for p in packages:
-	p = map(str, p)
-	print p[0].ljust(20), p[1].ljust(60), p[2].ljust(30), os.path.join(p[3], p[4]).ljust(10)
+	p = list(map(str, p))
+	print(p[0].ljust(20), p[1].ljust(60), p[2].ljust(30), os.path.join(p[3], p[4]).ljust(10))
