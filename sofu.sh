@@ -19,7 +19,7 @@ if ! check_version BASH_VERSINFO "${MIN_BASH_VERS[@]}"; then
 fi
 
 
-BREW_BUNDLE_FILE_PATH="$HOME/.config/homebrew/Brewfile"
+BREW_BUNDLE_FILE_PATH="${HOMEBREW_BUNDLE_FILE:-"$HOME/.config/homebrew/Brewfile"}"
 
 
 function main() {
