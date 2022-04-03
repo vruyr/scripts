@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+xargs brew unlink < <(
+	pcre2grep -o '(?<=< ).*' < <(
+		diff \
+			<(brew list --formula | sort) \
+			<(pcre2grep -o '(?<=^brew "homebrew/core/)[^"]+(?="$)' "$HOMEBREW_BUNDLE_FILE" | sort)
+	)
+)
