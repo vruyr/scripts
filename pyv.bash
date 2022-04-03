@@ -43,6 +43,8 @@ function pyv_new() {
 		return 1
 	}
 	printf "%s\n" "$pyvenv_dir"
+	pyv_new_created_venv_dir="$pyvenv_dir"
+	declare -p pyv_new_created_venv_dir
 	return 0
 }
 
