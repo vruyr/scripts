@@ -19,7 +19,7 @@ if ! check_version BASH_VERSINFO "${MIN_BASH_VERS[@]}"; then
 fi
 
 
-BREW_BUNDLE_FILE_PATH="${HOMEBREW_BUNDLE_FILE:-"$HOME/.config/homebrew/Brewfile"}"
+BREW_BUNDLE_FILE_DIR="$HOME/.config/homebrew"
 
 
 function main() {
@@ -110,7 +110,7 @@ function main() {
 	if [ "$homebrew_bundle_check" ]; then
 		echo "--- brew bundle check"
 		local o
-		o="$(brew bundle check --verbose --file="$BREW_BUNDLE_FILE_PATH")"
+		o="$(brew bundle check --verbose --file="$BREW_BUNDLE_FILE_DIR/Brewfile")"
 		if [ -n "$o" ] && [ "$o" != "The Brewfile's dependencies are satisfied." ]; then
 			echo "$o" | indent
 		fi
@@ -127,7 +127,7 @@ function main() {
 		echo "--- brew bundle cleanup"
 		#TODO The `brew bundle cleanup` has a bug where it doesn't recognize formulae from "core" tap spelled out with their fully-qualified names (e.g. homebrew/core/tmux).
 		#shellcheck disable=SC2016
-		eval_indent 'cat "$BREW_BUNDLE_FILE_PATH" | sed "s|^brew \"homebrew/core/|brew \"|" | brew bundle cleanup --file=-'
+		eval_indent 'brew bundle cleanup --file=<(cat "$BREW_BUNDLE_FILE_DIR"/Brewfile{,.extras} | sed "s|^brew \"homebrew/core/|brew \"|")'
 	fi
 	if [ "$npm_outdated" ]; then
 		if type >/dev/null 2>&1 npm; then
