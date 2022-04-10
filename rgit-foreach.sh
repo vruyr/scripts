@@ -13,6 +13,12 @@ function main() {
 		set -- pwd
 	fi
 
+	local show_path=
+	if [ "$1" == "--show" ]; then
+		show_path=1
+		shift
+	fi
+
 	all_repos=()
 	while IFS='' read -r line; do [ "$line" ] && all_repos+=("$line"); done < <(
 		jq <~/.rgit.json -r '.repositories[]' | tr -d '\r'
@@ -45,7 +51,10 @@ function main() {
 			fi
 
 			cd "$curdir"
-			"$@"
+			if [ -n "$show_path" ]; then
+				echo "$curdir"
+			fi
+			"$@" || :
 		)
 	done
 }
