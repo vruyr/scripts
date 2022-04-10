@@ -179,7 +179,13 @@ for f in *; do
 	elif [ -f ".routes/$d" ]; then
 		dd="$(cat "$PWD/.routes/$d")"
 		if [ -n "$dd" ]; then
-			mkdir -p "$PWD/$dd"
+			mkdir -p "$PWD/$dd/zEmpty"
+			SetFile -a V "$PWD/$dd/zEmpty"
+			iconfile=$(cd "$PWD/.foldericons/" && find . -name "${dd}.*" | head -n1)
+			if [ -f "$PWD/.foldericons/$iconfile" ]; then
+				cp "$PWD/.foldericons/$iconfile" "$PWD/$dd/folder.${iconfile##*.}"
+				SetFile -a V "$PWD/$dd/folder.${iconfile##*.}"
+			fi
 			this_git mv -v --force "$PWD/$f" "$PWD/$dd/"
 		fi
 	fi
