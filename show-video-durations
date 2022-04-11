@@ -217,14 +217,16 @@ async def walker(*, paths, queue, ignored_paths):
 DEFAULT_IGNORED_FILES = [
 	r"(\._)?\.DS_Store",
 	r"(\._)?(favorite|folder)(-atv)?\.(jpg|png)",
-	r".*\.empty\.mp4",
-	r"\.folderholder",
+	r"Icon\r",
 ]
 
 
 DEFAULT_IGNORED_DIRS = [
 	r"\.meta",
 	r"\.routes",
+	r"\.foldericons",
+	r"\.playlists",
+	r"\.tmp",
 ]
 
 
