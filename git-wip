@@ -62,10 +62,10 @@ def main(*, args, prog):
 		print(f"Detaching HEAD from {wip_branch!r}")
 		git("switch", "--detach", f"refs/heads/wip/{wip_branch}")
 		print(f"Rebasing: from base of {wip_branch!r} to HEAD onto dest of {wip_branch!r}.")
-		git("rebase", f"refs/heads/wip/zbase/{wip_branch}", "HEAD", "--onto", f"refs/heads/wip/zdest/{wip_branch}")
+		git("rebase", f"refs/heads/wip/zbase/{wip_branch}", "HEAD", "--onto", f"refs/heads/wip/zdest/{wip_branch}") #TODO:vruyr This could fail because of conflicts.
 		patchid_old = git("patch-id", input=git("diff", f"refs/heads/wip/zbase/{wip_branch}", f"refs/heads/wip/{wip_branch}", "--", stdout=sp.PIPE).stdout, stdout=sp.PIPE).stdout.strip()
 		patchid_new = git("patch-id", input=git("diff", f"refs/heads/wip/zdest/{wip_branch}", f"HEAD",                        "--", stdout=sp.PIPE).stdout, stdout=sp.PIPE).stdout.strip()
-		assert patchid_old == patchid_new, (patchid_old, patchid_new)
+		assert patchid_old == patchid_new, (patchid_old, patchid_new) #TODO:vruyr This could fail because of conflict resolution.
 		print(f"Updating branch {wip_branch!r}")
 		git("fetch", ".", f"+HEAD:refs/heads/wip/{wip_branch}")
 		print(f"Updating base of {wip_branch!r}")
