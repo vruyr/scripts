@@ -8,7 +8,7 @@ Options:
 	--force  Override worktree modifications
 """
 
-import sys, locale, asyncio, subprocess, os, re, shlex
+import sys, locale, asyncio, subprocess, os, re, shlex, urllib.parse
 # pip install docopt==0.6.2
 import docopt
 
@@ -43,19 +43,20 @@ async def main(*, args, prog):
 	# ---
 	#
 	git_local = Git(cmd=("git",))
+	await git_local.verify_version()
 	git_remote = await git_local.create_remote_git(remote=remote_name)
 
 	await log.put("Making sure local and remote HEADs are the same.")
 	head_local = await git_local.get_rev_sha("HEAD")
 	head_remote = await git_remote.get_rev_sha("HEAD")
 	assert head_local == head_remote, (head_local, head_remote)
-	await log.put(["Both are at:", head_local])
+	await log.put(["Both are at: ", head_local])
 
 	if verb == "push":
 		if shall_force:
 			await log.put("Stashing remote changes.")
 			if remote_stash := await git_remote.stash_create():
-				await log.put(("Remote modifications are preserved in a stash", remote_stash))
+				await log.put(("Remote modifications are preserved in a stash ", remote_stash))
 			else:
 				await log.put("Nothing to stash.")
 			await git_remote.command("restore", "-s", "HEAD", "-W", "-S", ".", capture_output=False)
@@ -63,7 +64,7 @@ async def main(*, args, prog):
 		await log.put("Stashing local changes.")
 		if local_stash := await git_local.stash_create():
 			remote_stash_ref = f"refs/wtpp/stashes/{local_stash}"
-			await log.put(["Pushing the newly created stash to", remote_name, "as", remote_stash_ref])
+			await log.put(["Pushing the newly created stash to ", remote_name, " as ", remote_stash_ref])
 			await git_local.push("--no-verify", "--force", remote_name, f"{local_stash}:{remote_stash_ref}")
 			await log.put("Applying the stash on remote side.")
 			await git_remote.stash_apply(local_stash)
@@ -72,24 +73,31 @@ async def main(*, args, prog):
 		else:
 			await log.put("Nothing to stash.")
 	elif verb == "pull":
+		local_stash = None
 		if shall_force:
-			await log.put("Stashing local changes.")
+			await log.put("Preserving local changes in a stash.")
 			if local_stash := await git_local.stash_create():
-				await log.put(("Local modifications are preserved in a stash", local_stash))
+				await log.put(("Created a local stash  ", local_stash))
 			else:
 				await log.put("Nothing to stash.")
-			await git_local.command("restore", "-s", "HEAD", "-W", "-S", ".", capture_output=False)
 
 		await log.put("Stashing remote changes.")
 		if remote_stash := await git_remote.stash_create():
-			remote_stash_ref = f"refs/wtpp/stashes/{remote_stash}"
-			await git_remote.command("update-ref", remote_stash_ref, remote_stash)
-			await log.put(["Fetching the newly created stash ", remote_stash])
-			await git_local.fetch(remote_name, f"{remote_stash}")
-			await log.put("Applying the stash on local side.")
-			await git_local.stash_apply(remote_stash)
-			await log.put("Cleaning up.")
-			await git_remote.command("update-ref", "-d", remote_stash_ref)
+			await log.put(["Created a remote stash ", remote_stash])
+			if remote_stash != local_stash:
+				remote_stash_ref = f"refs/wtpp/stashes/{remote_stash}"
+				await git_remote.command("update-ref", remote_stash_ref, remote_stash)
+				await log.put("Fetching the newly created stash.")
+				await git_local.fetch(remote_name, f"{remote_stash}")
+				if local_stash:
+					await log.put("Restoring local worktree to apply the stash.")
+					await git_local.command("restore", "-s", "HEAD", "-W", "-S", ".", capture_output=False)
+				await log.put("Applying the stash on local side.")
+				await git_local.stash_apply(remote_stash)
+				await log.put("Cleaning up.")
+				await git_remote.command("update-ref", "-d", remote_stash_ref)
+			else:
+				await log.put("Local and remote worktrees are identical.")
 		else:
 			await log.put("Nothing to stash.")
 	else:
@@ -108,75 +116,150 @@ async def main(*, args, prog):
 
 
 class Git(object):
-	def __init__(self, *, cmd=None, stdout_encoding="UTF-8"):
+	def __init__(self, *, cmd=None, host=None, cwd=None, stdout_encoding="UTF-8"):
 		if cmd is None:
 			cmd = ("git",)
-		self._cmd = cmd[0]
-		self._args = cmd[1:]
+		self._host = host
+		self._cmd = cmd
+		self._cwd = cwd
 		self._stdout_encoding = stdout_encoding
 
-
 	async def create_remote_git(self, *, remote):
-		host = await self.config_get(f"remote.{remote}.wtpp-ssh-host")
-		cmd = shlex.split(await self.config_get(f"remote.{remote}.wtpp-ssh-command"))
-		return self.__class__(
-			cmd=["ssh", host, *cmd],
+		remote_url = await self.config_get(f"remote.{remote}.url")
+		remote_url = urllib.parse.urlsplit(remote_url)
+		assert remote_url.scheme == "ssh", remote_url
+		assert remote_url.netloc == remote_url.hostname, remote_url
+		host = remote_url.hostname
+		repo_path = remote_url.path
+		if repo_path.startswith("/~/"):
+			repo_path = repo_path[1:]
+		remote_git_cmd = shlex.split(await self.config_get(f"wtpp.{host}.gitCmd") or "git")
+		remote_git = self.__class__(
+			host=host,
+			cmd=list(remote_git_cmd),
 			stdout_encoding=self._stdout_encoding
 		)
+		await remote_git.verify_version()
+		remote_git._cwd = repo_path
+		return remote_git
 
-	async def command(self, *args, capture_output=True, returncode_ok=None):
+	async def verify_version(self):
+		version = (await self.command("version", text_output=True)).rstrip("\n")
+		version = version.removeprefix("git version ")
+		version = version.split(".")
+		version = list(map(int, version))
+		assert version[0] == 2 and version[1] >= 30 or version[0] > 2, list(version)
+
+	async def command(self, *args, capture_output=True, returncode_ok=None, text_output=False, env=None):
+		return_returncode = True
 		if returncode_ok is None:
+			return_returncode = False
 			returncode_ok = lambda x: x == 0
+		if returncode_ok is True:
+			returncode_ok = lambda x: True
+
+		if self._host is None:
+			cmd = self._cmd[0]
+			cmd_args = list(self._cmd[1:])
+			if env is not None:
+				new_env = dict(os.environ)
+				new_env.update(env)
+				env = new_env
+		else:
+			cmd = "ssh"
+			cmd_args = [self._host]
+			for k, v in (env or {}).items():
+				assert shlex.split(k) == [k], [k]
+				assert shlex.split(v) == [v], [v]
+				cmd_args.append(f"{k}={v}")
+			cmd_args.extend(self._cmd)
+
+		if self._cwd:
+			assert shlex.split(self._cwd) == [self._cwd], [self._cwd]
+			cmd_args.append("-C")
+			cmd_args.append(self._cwd)
+
+		cmd_args.extend(args)
+
 		p = await asyncio.create_subprocess_exec(
-			self._cmd, *self._args, *args,
+			cmd, *cmd_args,
 			stdout=subprocess.PIPE if capture_output else None,
 			stderr=subprocess.PIPE if capture_output else None,
+			env=env
 		)
 		stdout, stderr = await p.communicate()
-		assert returncode_ok(p.returncode) and not stderr, (p.returncode, stderr, (self._cmd, *self._args, *args))
-		return stdout
+		assert returncode_ok(p.returncode) and not stderr, (p.returncode, stderr, (cmd, cmd_args))
+		result = stdout.decode(self._stdout_encoding) if text_output else stdout
+		return (p.returncode, result) if return_returncode else result
 
-
-	async def rev_parse(self, *args):
-		return (await self.command("rev-parse", *args)).decode(self._stdout_encoding)
-
+	async def rev_parse(self, *args, verify=False):
+		if verify:
+			args = ["--verify", *args]
+		result = await self.command("rev-parse", *args, text_output=True)
+		if verify:
+			result = result.strip()
+		return result
 
 	async def rev_list(self, *args):
-		return (await self.command("rev-list", *args)).decode(self._stdout_encoding)
-
+		return (await self.command("rev-list", *args, text_output=True))
 
 	async def get_rev_sha(self, rev):
 		o = (await self.rev_parse(rev)).splitlines()
 		assert len(o) == 1, o
 		return o[0]
 
-
 	async def get_rev_fullname(self, rev):
 		o = (await self.rev_parse("--symbolic-full-name", rev)).splitlines()
 		assert len(o) == 1, o
 		return o[0]
 
+	async def symbolic_ref(self, name, *, set_to=None):
+		args = []
+		if set_to is not None:
+			args = ["-m", "git-wtpp", name, set_to]
+		else:
+			args = [name]
+		returncode, output = await self.command("symbolic-ref", "--quiet", *args, text_output=True, returncode_ok=True)
+		if returncode == 0:
+			return output.strip()
+		elif returncode == 1:
+			return None
+		else:
+			assert False, returncode
 
 	async def config_get(self, name):
-		return (await self.command("config", "--get", name)).decode(self._stdout_encoding).rstrip("\n")
-
+		returncode, output = await self.command("config", "--get", name, text_output=True, returncode_ok=True)
+		if returncode == 0:
+			return output.rstrip("\n")
+		elif returncode == 1:
+			return None
+		else:
+			assert False, (returncode, name)
 
 	async def stash_create(self):
-		o = await self.command("stash", "create", returncode_ok=lambda x: x in (0, 1))
-		return self.extract_sha(o) if o != b"" else None
-
+		head_symbolic_ref = await self.symbolic_ref("HEAD")
+		await self.command("update-ref", "--no-deref", "HEAD", "HEAD")
+		returncode, o = await self.command("stash", "create", returncode_ok=lambda x: x in (0, 1), env={
+			"GIT_AUTHOR_NAME": "None",
+			"GIT_AUTHOR_EMAIL": "None",
+			"GIT_AUTHOR_DATE": "1970-01-01T00:00:00Z",
+			"GIT_COMMITTER_NAME": "None",
+			"GIT_COMMITTER_EMAIL": "None",
+			"GIT_COMMITTER_DATE": "1970-01-01T00:00:00Z",
+		})
+		result = self.extract_sha(o) if o != b"" else None
+		if head_symbolic_ref is not None:
+			await self.symbolic_ref("HEAD", set_to=head_symbolic_ref)
+		return result
 
 	async def stash_apply(self, sha):
 		await self.command("stash", "apply", "--index", sha, capture_output=False)
 
-
 	async def fetch(self, *args):
 		await self.command("fetch", *args, capture_output=False)
 
-
 	async def push(self, *args):
 		await self.command("push", *args, capture_output=False)
-
 
 	@staticmethod
 	def extract_sha(b):
@@ -191,7 +274,7 @@ async def printer(*, queue, fo):
 		if item is None:
 			break
 		if isinstance(item, (list, tuple)):
-			print(*item, file=fo)
+			print(*item, file=fo, sep="")
 		else:
 			print(item, file=fo)
 
