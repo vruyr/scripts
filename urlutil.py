@@ -52,13 +52,13 @@ def decompose(the_url):
 	scheme, netloc, path, params, query, fragment = urllib.parse.urlparse(the_url)
 	path = urllib.parse.unquote(path, errors="strict")
 	if query:
-		query = collections.OrderedDict(urllib.parse.parse_qsl(
+		query = urllib.parse.parse_qsl(
 			query,
 			keep_blank_values=True,
 			strict_parsing=True,
 			encoding=DEFAULT_ENCODING,
 			errors="strict",
-		))
+		)
 	return json.dumps(
 		collections.OrderedDict((
 			("scheme",   scheme),
