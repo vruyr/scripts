@@ -132,7 +132,7 @@ function main() {
 	if [ "$npm_outdated" ]; then
 		if type >/dev/null 2>&1 npm; then
 			echo "--- npm outdated"
-			eval_indent 'npm outdated --global'
+			eval_indent 'npm outdated --location=global'
 		else
 			echo "--- npm outdated - NOT AVAILABLE"
 		fi
