@@ -183,8 +183,11 @@ for f in *; do
 			SetFile -a V "$PWD/$dd/zEmpty"
 			iconfile=$(cd "$PWD/.foldericons/" && find . -name "${dd}.*" | head -n1)
 			if [ -f "$PWD/.foldericons/$iconfile" ]; then
-				cp "$PWD/.foldericons/$iconfile" "$PWD/$dd/folder.${iconfile##*.}"
-				SetFile -a V "$PWD/$dd/folder.${iconfile##*.}"
+				iconfile_dest="$PWD/$dd/folder.${iconfile##*.}"
+				cp "$PWD/.foldericons/$iconfile" "$iconfile_dest"
+				# https://apple.stackexchange.com/questions/6901/how-can-i-change-a-file-or-folder-icon-using-the-terminal
+				fileicon set "$PWD/$dd" "$iconfile_dest"
+				SetFile -a V "$iconfile_dest"
 			fi
 			this_git mv -v --force "$PWD/$f" "$PWD/$dd/"
 		fi
