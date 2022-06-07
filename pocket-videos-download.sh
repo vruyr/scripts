@@ -72,7 +72,7 @@ while [ $# -ne 0 ]; do
 	esac
 done
 
-
+getpocket_tag_videos_not='~videos-not'
 
 getpocket_extra_args=()
 youtubedl_extra_args=()
@@ -126,7 +126,7 @@ if [ -z "$finish_existing" ]; then
 	if [ -n "$download_all" ]; then
 		getpocket_list_args=()
 	else
-		getpocket_list_args=( -x '~videos-not' )
+		getpocket_list_args=( -x "$getpocket_tag_videos_not" )
 	fi
 	declare -a urls=(
 		$("$getpocket_path" "${getpocket_extra_args[@]}" list "$@" $(printf " -d %q" "${supported_domains[@]}") "${getpocket_list_args[@]}" --format $'{resolved_url}\n')
@@ -209,4 +209,4 @@ if [ "$okay_dirty" != 1 -a -n "$(this_git diff-index --cached --raw HEAD)" ]; th
 fi
 
 
-"$getpocket_path" list -d youtube.com -d youtu.be --format='--id={item_id} ' | xargs "$getpocket_path" tag -t '~videos-not'
+"$getpocket_path" "${getpocket_extra_args[@]}" list -x "$getpocket_tag_videos_not" $(printf " -d %q" "${supported_domains[@]}") --format=' --id={item_id}' | xargs "$getpocket_path" tag -t "$getpocket_tag_videos_not"
