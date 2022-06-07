@@ -207,3 +207,6 @@ if [ "$okay_dirty" != 1 -a -n "$(this_git diff-index --cached --raw HEAD)" ]; th
 	fi
 	unset diff_index_expected diff_index
 fi
+
+
+"$getpocket_path" list -d youtube.com -d youtu.be --format='--id={item_id} ' | xargs "$getpocket_path" tag -t '~videos-not'
