@@ -85,6 +85,7 @@ async def main(*, args, prog):
 		if remote_stash := await git_remote.stash_create():
 			await log.put(["Created a remote stash ", remote_stash])
 			if remote_stash != local_stash:
+				#TODO Instead of creating a named reference, use something like: git fetch --upload-pack 'git -c uploadpack.allowAnySHA1InWant=true upload-pack' ssh://remote/~/repo af386f59e39f3f4d5606a25a341d63a09de55b73
 				remote_stash_ref = f"refs/wtpp/stashes/{remote_stash}"
 				await git_remote.command("update-ref", remote_stash_ref, remote_stash)
 				await log.put("Fetching the newly created stash.")
