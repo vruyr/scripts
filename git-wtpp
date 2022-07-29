@@ -146,7 +146,7 @@ class Git(object):
 
 	async def verify_version(self):
 		version = (await self.command("version", text_output=True)).rstrip("\n")
-		version = version.removeprefix("git version ")
+		version = version.removeprefix("git version ").split(" ")[0]
 		version = version.split(".")
 		version = list(map(int, version))
 		assert version[0] == 2 and version[1] >= 30 or version[0] > 2, list(version)
