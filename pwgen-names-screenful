@@ -1,0 +1,3 @@
+#!/usr/bin/env zsh
+
+pwgen -A0 5 $(( (LINES - 2) * ( (COLUMNS - 1) / 6 ) )) | tr '\n' ' ' | xargs | fold -s -w $COLUMNS
