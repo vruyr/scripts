@@ -17,9 +17,13 @@ Options:
 	--date-regex, -d REGEX      Regex pattern for full file name without path to extract date. [default: (?P<date>\\d{{8}}).*]
 """
 
-import sys, locale, asyncio, subprocess, os, collections, re, itertools
+import sys, locale, asyncio, subprocess, os, collections, re, itertools, pathlib, json
 # pip install docopt==0.6.2
 import docopt
+
+
+CACHE_DIR = pathlib.Path.home() / ".cache"
+CACHE_FILE = CACHE_DIR / pathlib.Path(__file__).stem
 
 
 async def main(*, args, prog):
@@ -90,6 +94,7 @@ async def main(*, args, prog):
 		while True:
 			pfd = await pending_durations.get()
 			if pfd is None:
+				pending_durations.task_done()
 				break
 
 			the_path, the_file, the_duration = pfd
@@ -171,9 +176,18 @@ async def main(*, args, prog):
 
 
 async def path_consumer(*, queue_in, queue_out, max_parallel, ffprobe_path):
+	duration_cache = {}
+	if CACHE_FILE.exists():
+		with CACHE_FILE.open("r") as fo:
+			duration_cache = json.load(fo)
+
 	async def do_one(p, f):
 		try:
-			d = await get_video_file_duration(f, ffprobe_path=ffprobe_path)
+			cache_key = pathlib.Path(f).resolve().as_posix()
+			d = duration_cache.get(cache_key, None)
+			if d is None:
+				d = await get_video_file_duration(f, ffprobe_path=ffprobe_path)
+				duration_cache[cache_key] = d
 		except Exception as e:
 			d = e
 		await queue_out.put((p, f, d))
@@ -204,6 +218,9 @@ async def path_consumer(*, queue_in, queue_out, max_parallel, ffprobe_path):
 
 		if pending:
 			done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED, timeout=(0 if expect_more else None))
+
+	with CACHE_FILE.open("w") as fo:
+		json.dump(duration_cache, fo, indent="\t")
 
 	await queue_out.put(None)
 
