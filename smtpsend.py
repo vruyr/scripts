@@ -45,7 +45,7 @@ def main(argv=None):
 	with smtplib.SMTP(local_hostname=local_hostname, source_address=source_address) as s:
 		if opts.debug:
 			s.set_debuglevel(2)
-		s.connect(opts.smtp_server)
+		s.connect(host=opts.smtp_server, port=opts.smtp_server_port)
 		if opts.starttls:
 			# TODO Make sure that this will throw if the certificate is invalid.
 			s.starttls()
@@ -95,6 +95,7 @@ def _parse_args(argv):
 	parser.add_argument("--no-tls", dest="starttls", action="store_false", default=True)
 	parser.add_argument("--silent", action="store_true", default=False)
 	parser.add_argument("--smtp", dest="smtp_server", action="store", default="localhost")
+	parser.add_argument("--smtp-port", dest="smtp_server_port", action="store", type=int, default=25)
 	parser.add_argument("--username", "-u", dest="username", action="store", default=None)
 	parser.add_argument("--from", "-f", dest="msg_from", action="store", default=None)
 	parser.add_argument("--to", "-t", dest="msg_to", action="append", default=None)
