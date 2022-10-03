@@ -43,6 +43,7 @@ def main(argv=None):
 	source_address = (opts.local_address, 0) if opts.local_address else None
 	local_hostname = opts.local_hostname if opts.local_hostname else None
 	with smtplib.SMTP(local_hostname=local_hostname, source_address=source_address) as s:
+		s._host = opts.smtp_server # TODO https://stackoverflow.com/a/71845134
 		if opts.debug:
 			s.set_debuglevel(2)
 		s.connect(host=opts.smtp_server, port=opts.smtp_server_port)
