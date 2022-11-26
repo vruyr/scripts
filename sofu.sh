@@ -98,37 +98,40 @@ function main() {
 		esac
 	done
 
+	brew_path="$(which brew)"
+	brew_path_pretty="$(cd "$(dirname "$brew_path")" && dirs +0)/$(basename "$brew_path")"
+
 	if [ "$homebrew_bundle_check" ] || [ "$homebrew_outdated" ] || [ "$homebrew_cask_outdated" ] || [ "$homebrew_bundle_cleanup" ]; then
-		echo "--- brew update"
+		echo "--- $brew_path_pretty update"
 		local o
-		o="$(brew update)"
+		o="$("$brew_path" update)"
 		if [ -n "$o" ] && [ "$o" != "Already up-to-date." ]; then
 			echo "$o" | indent
 		fi
 		eval_indent ''
 	fi
 	if [ "$homebrew_bundle_check" ]; then
-		echo "--- brew bundle check"
+		echo "--- $brew_path_pretty bundle check"
 		local o
-		o="$(brew bundle check --verbose --file="$BREW_BUNDLE_FILE_DIR/Brewfile")"
+		o="$("$brew_path" bundle check --verbose --file="$BREW_BUNDLE_FILE_DIR/Brewfile")"
 		if [ -n "$o" ] && [ "$o" != "The Brewfile's dependencies are satisfied." ]; then
 			echo "$o" | indent
 		fi
 	fi
 	if [ "$homebrew_outdated" ]; then
-		echo "--- brew outdated --formula"
-		eval_indent 'brew outdated --formula --verbose'
+		echo "--- $brew_path_pretty outdated --formula"
+		eval_indent '"$brew_path" outdated --formula --verbose'
 	fi
 	if [ "$homebrew_cask_outdated" ]; then
-		echo "--- brew outdated --cask"
-		eval_indent 'brew outdated --cask --verbose --greedy'
+		echo "--- $brew_path_pretty outdated --cask"
+		eval_indent '"$brew_path" outdated --cask --verbose --greedy'
 	fi
 	if [ "$homebrew_bundle_cleanup" ]; then
-		echo "--- brew bundle cleanup"
+		echo "--- $brew_path_pretty bundle cleanup"
 		#TODO The `brew bundle cleanup` has a bug where it doesn't recognize formulae from "core" tap spelled out with their fully-qualified names (e.g. homebrew/core/tmux).
 		patched_brewfile_content="$(cat "$BREW_BUNDLE_FILE_DIR"/Brewfile{,.extras} | sed -e 's|^brew "homebrew/core/|brew "|')"
 		#shellcheck disable=SC2016
-		eval_indent 'brew bundle cleanup --file=- <<<"$patched_brewfile_content"'
+		eval_indent '"$brew_path" bundle cleanup --file=- <<<"$patched_brewfile_content"'
 	fi
 	if [ "$npm_outdated" ]; then
 		if type >/dev/null 2>&1 npm; then
