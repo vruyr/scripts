@@ -66,7 +66,7 @@ def main(args):
 		if dt is None:
 			continue
 		path = pathlib.Path(ph.path)
-		newpath = path.parent / "{:%Y%m%dT%H%M%S%z} {}".format(dt, path.name)
+		newpath = path.parent / "{:%Y-%m-%d %H-%M-%S %z} {}".format(dt, path.name)
 		assert not newpath.exists()
 		path.rename(newpath)
 
@@ -74,7 +74,7 @@ def main(args):
 
 
 def parse_gps_date_time(gps_date_stamp, gps_time_stamp):
-	if gps_date_stamp is None and gps_time_stamp is None:
+	if gps_date_stamp is None or gps_time_stamp is None:
 		return None
 	return parse_date_time("{} {}".format(gps_date_stamp, gps_time_stamp), datetime.timezone.utc)
 
@@ -83,7 +83,7 @@ def parse_date_time(dt, tzinfo=None):
 	if dt is None:
 		return None
 	m = re.match(r"^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})(\.\d+)?$", dt)
-	assert m, dt
+	assert m, (dt,)
 	year, month, day, hour, minute, second, subseconds = m.groups()
 	d = datetime.datetime(
 		year=int(year),
@@ -143,7 +143,7 @@ class PhotoInfo(object):
 		dt = self.creation_date_dt
 		if dt is None:
 			return None
-		if dt.tzinfo is not None and self.timezone is not None:
+		if dt.tzinfo is None and self.timezone is not None:
 			return dt.astimezone(self.timezone)
 		else:
 			return dt
