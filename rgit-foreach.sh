@@ -142,23 +142,23 @@ function incoming() {
 
 	if [ -n "$at_least_one_not_skipped" ] && [ -z "$at_least_one_skipped" ]; then
 		if [ "${#output_messages[@]}" -ne 0 ]; then
-			printf "%s%s %s%s\n" $'\x1b[0;42;30m' '•' "$(pwd)" $'\x1b[0m'
+			printf "\x1b[2K%s%s %s%s\n" $'\x1b[0;42;30m' '•' "$(pwd)" $'\x1b[0m'
 			printf "%s" "${output_messages[@]}"
 			printf "\n"
 		else
-			printf "%s%s %s%s\n" $'\x1b[0m' '•' "$(pwd)" $'\x1b[0m'
+			printf "\x1b[2K%s%s %s%s\n\x1b[1F" $'\x1b[0m' '•' "$(pwd)" $'\x1b[0m'
 		fi
 	else
 		if [ -n "$at_least_one_not_skipped" ]; then
 			if [ "${#output_messages[@]}" -ne 0 ]; then
-				printf "%s%s %s%s\n" $'\x1b[0;2;32m' 'P' "$(pwd)" $'\x1b[0m'
+				printf "\x1b[2K%s%s %s%s\n" $'\x1b[0;2;32m' 'P' "$(pwd)" $'\x1b[0m'
 				printf "%s" "${output_messages[@]}"
 				printf "\n"
 			else
-				printf "%s%s %s%s\n" $'\x1b[0;37m' 'P' "$(pwd)" $'\x1b[0m'
+				printf "\x1b[2K%s%s %s%s\n" $'\x1b[0;37m' 'P' "$(pwd)" $'\x1b[0m'
 			fi
 		else
-			printf "%s%s %s%s\n" $'\x1b[0;2;37m' 'S' "$(pwd)" $'\x1b[0m'
+			printf "\x1b[2K%s%s %s%s\n" $'\x1b[0;2;37m' 'S' "$(pwd)" $'\x1b[0m'
 		fi
 	fi
 }
