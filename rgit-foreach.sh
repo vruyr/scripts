@@ -61,7 +61,16 @@ function main() {
 
 
 function incoming() {
-	local url_prefixes=( "$@" )
+	local -a url_prefixes_include
+	local -a url_prefixes_exclude
+
+	for i in "$@"; do
+		if [ "${i:0:1}" == "-" ]; then
+			url_prefixes_exclude+=( "${i:1}" )
+		else
+			url_prefixes_include+=( "$i" )
+		fi
+	done
 
 	if [ "${PWD}" != "${PWD%/.git}" ]; then
 		cd ..
@@ -74,17 +83,27 @@ function incoming() {
 		u="$(git remote get-url "$r")"
 
 		local must_skip=1
-		if [ ${#url_prefixes[@]} -eq 0 ]; then
+		if [ ${#url_prefixes_include[@]} -eq 0 ]; then
 			must_skip=
 		else
 			local url_prefix=
-			for url_prefix in "${url_prefixes[@]}"; do
+			for url_prefix in "${url_prefixes_include[@]}"; do
 				if starts_with "$u" "$url_prefix" || starts_with "${HOME}${u#\~}" "$url_prefix"; then
 					must_skip=
 					break
 				fi
 			done
 		fi
+
+		if [ -z "$must_skip" ]; then
+			for url_prefix in "${url_prefixes_exclude[@]}"; do
+				if starts_with "$u" "$url_prefix" || starts_with "${HOME}${u#\~}" "$url_prefix"; then
+					must_skip=1
+					break
+				fi
+			done
+		fi
+
 		if [ -n "$must_skip" ]; then
 			at_least_one_skipped=1
 			continue
