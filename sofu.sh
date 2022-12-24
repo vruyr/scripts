@@ -129,7 +129,7 @@ function main() {
 	if [ "$homebrew_bundle_cleanup" ]; then
 		echo "--- $brew_path_pretty bundle cleanup"
 		#TODO The `brew bundle cleanup` has a bug where it doesn't recognize formulae from "core" tap spelled out with their fully-qualified names (e.g. homebrew/core/tmux).
-		patched_brewfile_content="$(cat "$BREW_BUNDLE_FILE_DIR"/Brewfile{,.extras} | sed -e 's|^brew "homebrew/core/|brew "|')"
+		patched_brewfile_content="$(cat "$BREW_BUNDLE_FILE_DIR"/Brewfile "$BREW_BUNDLE_FILE_DIR"/Brewfile.* | sed -e 's|^brew "homebrew/core/|brew "|')"
 		#shellcheck disable=SC2016
 		eval_indent '"$brew_path" bundle cleanup --file=- <<<"$patched_brewfile_content"'
 	fi
