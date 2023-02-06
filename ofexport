@@ -36,6 +36,11 @@ function main(...args) {
 		}
 	}
 
+	/*
+	>> Application("OmniFocus").defaultDocument.documentWindows.content.trees.value.projects.tasks.name()
+	=> [[[["a task"]], [["A", "Foo bar", "B"]]]]
+	*/
+
 	result = result.join("\n") + "\n";
 
 	console.log(result);
@@ -200,7 +205,7 @@ function tzStr(d) {
 	var totalMinutes = Math.abs(x);
 	var minutes = totalMinutes % 60;
 	var hours = (totalMinutes - minutes) / 60;
-	var absStr = `${zpadStrInt(hours, 2)}${zpadStrInt(minutes, 2)}`;
+	var absStr = `${zpadStrInt(hours, 2)}:${zpadStrInt(minutes, 2)}`;
 	return (x > 0 ? "-" : "+") + absStr;
 }
 
