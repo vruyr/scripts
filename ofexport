@@ -114,24 +114,12 @@ function taskToDirectiveText(task) {
 		result.push([indent, str]);
 	}
 
-	line(0, ".. container:: thoughts");
-	line(0, "");
-
 	var taskName = task.name();
-	if(taskName) {
-		line(1, taskName);
-		line(0, "");
-	}
-
-	line(1, "Created");
-	line(2, dateToStr(task.creationDate()));
-	line(1, "Modified");
-	line(2, dateToStr(task.modificationDate()));
+	line(0, `- ${taskName} [added::${dateToStr(task.creationDate())}] [modified::${dateToStr(task.modificationDate())}]`)
 
 	var note = task.note().trim();
 	if(note) {
-		line(0, "");
-		line(1, note);
+		line(0, note.split("\n").map(x => "  " + x).join("\n"));
 	}
 
 	var indentWidth = 4;
@@ -186,7 +174,7 @@ function dateToStr(d) {
 	var hours = zpadStrInt(d.getHours(), 2);
 	var minutes = zpadStrInt(d.getMinutes(), 2);
 	var seconds = zpadStrInt(d.getSeconds(), 2);
-	return `${d.getFullYear()}-${month}-${date} ${hours}:${minutes}:${seconds} ${tzStr(d)}`;
+	return `${d.getFullYear()}-${month}-${date}T${hours}:${minutes}:${seconds}${tzStr(d)}`;
 }
 
 
