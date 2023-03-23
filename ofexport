@@ -115,7 +115,15 @@ function taskToDirectiveText(task) {
 	}
 
 	var taskName = task.name();
-	line(0, `- ${taskName} [added::${dateToStr(task.creationDate())}] [modified::${dateToStr(task.modificationDate())}]`)
+	let creationDate = dateToStr(task.creationDate());
+	let modificationDate = dateToStr(task.modificationDate());
+	let mainLine = `- ${taskName}`;
+	mainLine += ` [added::${creationDate}]`;
+	if(modificationDate !== creationDate) {
+		mainLine += ` [modified::${modificationDate}]`;
+	}
+
+	line(0, mainLine);
 
 	var note = task.note().trim();
 	if(note) {
