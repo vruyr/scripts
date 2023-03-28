@@ -85,7 +85,7 @@ async def process_apache_access_log(*, input_stream, output_queue, exclude_hosts
 	# LogFormat "%h %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" combined
 	# http://httpd.apache.org/docs/current/mod/mod_log_config.html
 
-	line_p = re.compile(r"""^(?P<remote_hostname>\S+) (?P<remote_logname>\S+) (?P<remote_user>\S+) \[(?P<time>[^]]+)\] "(?P<request_first_line>[^"]+)" (?P<final_status>\S+) (?P<bytes_sent>\d+) "(?P<referrer>[^"]+)" "(?P<useragent>[^"]+)"\s*$""")
+	line_p = re.compile(r"""^(?P<remote_hostname>\S+) (?P<remote_logname>\S+) (?P<remote_user>\S+) \[(?P<time>[^]]+)\] "(?P<request_first_line>[^"]+)" (?P<final_status>\S+) (?P<bytes_sent>\d+) "(?P<referrer>[^"]*)" "(?P<useragent>[^"]+)"\s*$""")
 	request_p = re.compile(r"""^(?P<method>\S+)\s+(?P<uri>.*)\s+(?P<httpversion>\S+)\s*$""")
 
 	def json_default(o):
@@ -102,7 +102,11 @@ async def process_apache_access_log(*, input_stream, output_queue, exclude_hosts
 				if not line:
 					break
 				line = line.decode("UTF-8") #TODO Don't assume UTF-8 encoding.
-				linedict = line_p.match(line).groupdict()
+				line_m = line_p.match(line)
+				if line_m is None:
+					await output_queue.put(f"Unmatched: {line}")
+					continue
+				linedict = line_m.groupdict()
 				linedict["time"] = datetime.datetime.strptime(linedict["time"], "%d/%b/%Y:%H:%M:%S %z")
 				if since and linedict["time"] < since:
 					continue
@@ -130,10 +134,11 @@ async def process_apache_access_log(*, input_stream, output_queue, exclude_hosts
 					f_method = (linedict.get("request") or {}).get("method", "<none>")
 					f_status = linedict["final_status"]
 					f_remote_host = linedict["remote_hostname"]
-					f_city = linedict["geoip"]["city"] or "-"
 					f_country = linedict["geoip"]["country"]["iso_code"] or "-"
+					f_state = linedict["geoip"]["state"]["iso_code"] or "-"
+					f_city = linedict["geoip"]["city"] or "-"
 					f_uri = (linedict.get("request") or {}).get("uri", repr(linedict["request_first_line"]))
-					await output_queue.put(f"""{f_time} {f_method:8} {f_status} {f_remote_host:15} {f_city:20} {f_country:2} {f_uri}\n""")
+					await output_queue.put(f"""{f_time} {f_method:8} {f_status} {f_remote_host:15} {f_country:2} {f_state:2} {f_city:20} {f_uri}\n""")
 				else:
 					await output_queue.put(json.dumps(linedict, indent="\t", default=json_default))
 					await output_queue.put("\n")
@@ -148,6 +153,10 @@ def format_geoip(geoip_city, geoip_asn):
 		"country": {
 			"name": geoip_city.country.name if geoip_city else None,
 			"iso_code": geoip_city.country.iso_code if geoip_city else None,
+		},
+		"state": {
+			"name": geoip_city.subdivisions.most_specific.name if geoip_city else None,
+			"iso_code": geoip_city.subdivisions.most_specific.iso_code if geoip_city else None,
 		},
 		"continent": geoip_city.continent.name if geoip_city else None,
 		"location": {
