@@ -99,7 +99,14 @@ function main() {
 	done
 
 	brew_path="$(which brew)"
-	brew_path_pretty="$(cd "$(dirname "$brew_path")" && dirs +0)/$(basename "$brew_path")"
+	case "$brew_path" in
+		"/opt/homebrew/bin/brew")
+			brew_path_pretty="brew"
+			;;
+		*)
+			brew_path_pretty="$(cd "$(dirname "$brew_path")" && dirs +0)/$(basename "$brew_path")"
+			;;
+	esac
 
 	if [ "$homebrew_bundle_check" ] || [ "$homebrew_outdated" ] || [ "$homebrew_cask_outdated" ] || [ "$homebrew_bundle_cleanup" ]; then
 		echo "--- $brew_path_pretty update"
