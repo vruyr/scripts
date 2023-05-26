@@ -27,7 +27,7 @@ function main(...args) {
 			if(params.writeJson) {
 				taskStr = taskToJsonString(task);
 			} else {
-				taskStr = taskToDirectiveText(task);
+				taskStr = taskToObsidianText(task);
 			}
 			result.push(taskStr);
 			if(params.prependCreationDate) {
@@ -41,7 +41,7 @@ function main(...args) {
 	=> [[[["a task"]], [["A", "Foo bar", "B"]]]]
 	*/
 
-	result = result.join("\n") + "\n";
+	result = result.join("\n");
 
 	console.log(result);
 
@@ -50,7 +50,7 @@ function main(...args) {
 		app.setTheClipboardTo(result);
 	}
 
-	return; // Returned value will be printed on the console by osascript
+	return ""; // Returned value will be printed on the console by osascript
 }
 
 
@@ -107,7 +107,7 @@ function taskToJsonString(task) {
 }
 
 
-function taskToDirectiveText(task) {
+function taskToObsidianText(task) {
 	var result = [];
 
 	function line(indent, str) {
@@ -135,7 +135,7 @@ function taskToDirectiveText(task) {
 		return " ".repeat(indentWidth * args[0]) + args[1];
 	});
 
-	return result.join("\n") + "\n";
+	return result.join("\n");
 }
 
 

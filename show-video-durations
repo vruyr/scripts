@@ -15,6 +15,7 @@ Options:
 	--chdir, -C PATH            Change current folder to specified path before doing anything else.
 	--ignore, -i REGEX          Exclude paths that match the regex pattern from calculations.
 	--date-regex, -d REGEX      Regex pattern for full file name without path to extract date. [default: (?P<date>\\d{{8}}).*]
+	--paths-from-stdin          Do not walk the filesystem, instead use paths from standard input one path per line.
 """
 
 import sys, locale, asyncio, subprocess, os, collections, re, itertools, pathlib, json
@@ -44,6 +45,7 @@ async def main(*, args, prog):
 	chdir_path = params.pop("--chdir")
 	ignored_paths = params.pop("--ignore")
 	date_regex = params.pop("--date-regex")
+	paths_from_stdin = params.pop("--paths-from-stdin")
 	assert not cache_path, "--cache-path is not implemented"
 	assert not params, params
 
@@ -161,7 +163,14 @@ async def main(*, args, prog):
 			ffprobe_path=ffprobe_path,
 		))
 	)
-	await walker(paths=paths, queue=pending_paths, ignored_paths=ignored_paths)
+
+	if paths_from_stdin:
+		for p in sys.stdin.readlines():
+			p = p.strip()
+			await pending_paths.put((".", p))
+		await pending_paths.put(None)
+	else:
+		await walker(paths=paths, queue=pending_paths, ignored_paths=ignored_paths)
 
 	await pending_paths.join()
 	await pending_durations.join()
