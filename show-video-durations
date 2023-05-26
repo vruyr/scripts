@@ -92,6 +92,7 @@ async def main(*, args, prog):
 			await log.put("\n")
 
 		widths = [0, 0]
+		clear = ""
 
 		while True:
 			pfd = await pending_durations.get()
