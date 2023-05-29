@@ -16,7 +16,7 @@ def main(
 	if show_all_mailboxes:
 		for label, entries in list_accounts():
 			print(label)
-			for entry in entries:
+			for entry in sorted(entries, key=mailbox_name_sort_order_key):
 				print("\t", "/".join(entry["path"]), sep="")
 			print()
 	else:
@@ -38,6 +38,29 @@ def main(
 		))
 
 
+the_mailbox_name_order_first = ["INBOX", "Drafts", "Sent", "Junk", "Spam", "Trash"]
+the_mailbox_name_order_last = ["Archive"]
+emojis = ["⏱", "📥", "🗃️"]
+def mailbox_name_sort_order_key(entry):
+	path = entry["path"]
+	if path[0] == "[Gmail]":
+		path = path[1:]
+	for i in emojis:
+		if path and path[0].startswith(i):
+			order = (2, path)
+			break
+	else:
+		order = (3, path)
+	try:
+		order = (1, the_mailbox_name_order_first.index(path[0]), *path)
+	except:
+		try:
+			order = (4, the_mailbox_name_order_last.index(path[0]), *path)
+		except:
+			pass
+	return order
+
+
 def list_accounts():
 	for label, url in read_config("accounts"):
 		p = subprocess.run(
@@ -48,7 +71,17 @@ def list_accounts():
 		)
 		assert p.returncode == 0, p
 		assert not p.stderr
-		yield (label, json.loads(p.stdout.decode()))
+		try:
+			out = p.stdout.decode()
+		except:
+			print(p.stdout)
+			raise
+		try:
+			out = json.loads(out)
+		except:
+			print(out)
+			raise
+		yield (label, out)
 
 
 def read_config(name):
