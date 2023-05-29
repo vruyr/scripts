@@ -76,7 +76,7 @@ def main(opts):
 
 	path_sep = "/"
 	path = path.strip(path_sep)
-	path = path.split(path_sep) if path else []
+	path = [urllib.parse.unquote(i) for i in path.split(path_sep)] if path else []
 
 	if path:
 		mailbox = personal_ns_delimiter.join(path)
@@ -142,10 +142,12 @@ def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox):
 			show_msg(-1, "{!r}, {!r}", response_type, response_data)
 			return
 
-		print()
 		response_type, response_data = conn.search(None, "ALL")
 		assert response_type == "OK"
 		assert len(response_data) == 1
+		if response_data == [None]:
+			print("(empty)")
+			return
 		msgns = response_data[0].split()
 		for msgn in msgns:
 			msg_part = b"RFC822.HEADER"
