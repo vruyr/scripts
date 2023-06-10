@@ -2,10 +2,11 @@
 
 from argparse import Namespace
 from os import name
-import sys, urllib.parse, imaplib, ssl, getpass, hmac, email, shlex, subprocess, re, json
+import sys, urllib.parse, imaplib, ssl, getpass, hmac, email, email.policy, shlex, subprocess, re, json
 # pip install IMAPClient==2.2.0
 from imapclient import imap_utf7
 
+# https://datatracker.ietf.org/doc/html/rfc3501.html
 #TODO (encode|decode|b["']) - fix all the binary to text conversions, remove all hard-coded encodings.
 verbosity=None
 
@@ -81,7 +82,7 @@ def main(opts):
 	if path:
 		mailbox = personal_ns_delimiter.join(path)
 		#TODO:vruyr:bugs Special chars, such as hierarchy delimiter, in path components should be escaped.
-		list_mailbox_content(conn=conn, mailbox=mailbox)
+		list_mailbox_content(conn=conn, mailbox=mailbox, show_in_mbox=opts.show_in_mbox, show_in_json=opts.show_in_json)
 	else:
 		list_mailboxes(conn=conn, show_in_json=opts.show_in_json)
 
@@ -134,7 +135,22 @@ def get_namespaces(conn: imaplib.IMAP4):
 	return personal_ns, otherusers_ns, shared_ns
 
 
-def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox):
+class EmailPolicy(email.policy.EmailPolicy):
+	def header_source_parse(self, sourcelines):
+		value = "".join(l.rstrip("\r\n") for l in sourcelines)
+		name, value = value.split(":", 1)
+		value = re.sub(r"[ \t]+", " ", value).lstrip(" \t").rstrip("\r\n \t")
+		return (name, value)
+
+
+email_policy = EmailPolicy(
+	linesep="\r\n",
+	utf8=True,
+	refold_source="all",
+)
+
+
+def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox, show_in_mbox, show_in_json):
 		mailbox = imap_utf7_encode(mailbox)
 		mailbox = b'"' + mailbox + b'"' #TODO Why do we need to quotes here and what happens if the name already has a quote.
 		response_type, response_data = conn.select(mailbox, readonly=True)
@@ -143,32 +159,64 @@ def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox):
 			return
 
 		response_type, response_data = conn.search(None, "ALL")
-		assert response_type == "OK"
+		assert response_type == "OK", (response_type, response_data)
 		assert len(response_data) == 1
 		if response_data == [None]:
 			print("(empty)")
 			return
+
+		msgs = []
+		msg_fetch_parts = b"(FLAGS BODY.PEEK[HEADER])"
+		msg_fetch_response_pattern = re.compile(rb"(?P<msgn>\d+) \((?P<flags>FLAGS \((?:.*?)\)) BODY\[HEADER\] \{(?P<size>\d+)\}")
+
 		msgns = response_data[0].split()
 		for msgn in msgns:
-			msg_part = b"RFC822.HEADER"
-			response_type, response_data = conn.fetch(msgn, b"(" + msg_part + b")")
-			assert response_type == "OK"
+			#TODO:vruyr If show_in_mbox or show_in_json is true, fetch all the parts, not just the header.
+			response_type, response_data = conn.fetch(msgn, msg_fetch_parts)
+			assert response_type == "OK", (response_type, response_data)
 			(envelope_start, message_data), envelope_end = response_data
-			expected_envelope_start = b"%b (%s {%d}"% (msgn, msg_part, len(message_data))
-			assert envelope_start == expected_envelope_start
+			m = msg_fetch_response_pattern.match(envelope_start)
+			if not m:
+				print("Pattern:", msg_fetch_response_pattern)
+				print("Response: ", envelope_start)
+				assert False
+			m = m.groupdict()
+			assert sorted(m.keys()) == ["flags", "msgn", "size"], m
+			assert m["msgn"] == msgn, (msgn, m)
+			assert int(m["size"]) == len(message_data), (m, message_data)
 			assert envelope_end == b")"
-			msg = email.message_from_bytes(message_data)
-			print(
-				"{n}\tDate: {d}\tFrom: {f}\tTo: {t}\tSubject: {s!r}\tMessage-ID: {i}".format(
-					n=msgn.decode("ASCII"),
-					d=msg["Date"],
-					f=msg["From"],
-					t=msg["To"],
-					s=msg["Subject"],
-					i=msg["Message-ID"],
-				),
-				end="\n"
+			flags = [f.decode("ASCII") for f in imaplib.ParseFlags(m["flags"])]
+			msg = email.message_from_bytes(message_data, policy=email_policy)
+			msgs.append((msg, flags))
+
+		msgs.sort(key=lambda msg_and_flags: msg_and_flags[0]["Date"])
+		if show_in_mbox:
+			for msg, flags in msgs:
+				sys.stdout.buffer.write(msg.as_bytes(unixfrom=True, policy=email_policy))
+				sys.stdout.buffer.write(b"\r\n\r\n")
+		elif show_in_json:
+			json.dump(
+				[
+					msg.as_string(unixfrom=False, maxheaderlen=0, policy=email_policy) for msg, flags in msgs
+				],
+				sys.stdout,
+				indent=4
 			)
+			sys.stdout.write("\n")
+		else:
+			for msg, flags in msgs:
+				print(
+					"Date: {d}\tFrom: {f}\tTo: {t}\tSubject: {s!r}\tMessage-ID: {i}".format(
+						d=msg["Date"],
+						f=msg["From"],
+						t=msg["To"],
+						s=msg["Subject"],
+						i=msg["Message-ID"],
+					),
+					end="\n"
+				)
+				if flags:
+					print(flags)
 
 
 def list_mailboxes(*, conn, show_in_json):
@@ -253,6 +301,7 @@ def sysmain():
 	output_options.add_argument("--json", "-j",    dest="show_in_json",        action="store_true", default=False)
 	output_options.add_argument("--verbose", "-v", dest="verbosity",           action="count",      default=0, help="increase verbosity, can be used multiple times")
 	output_options.add_argument("--quiet", "-q",   dest="_negative_verbosity", action="count",      default=0, help="decrease verbosity, can be used multiple times")
+	output_options.add_argument("--mbox",          dest="show_in_mbox",        action="store_true", default=False, help="if both --json and --mbox is passed, --mbox takes precedence")
 
 
 	connectivity = parser.add_argument_group("Connectivity")
