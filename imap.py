@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-from argparse import Namespace
-from os import name
 import sys, urllib.parse, imaplib, ssl, getpass, hmac, email, email.policy, shlex, subprocess, re, json
 # pip install IMAPClient==2.2.0
 from imapclient import imap_utf7
@@ -82,7 +80,7 @@ def main(opts):
 	if path:
 		mailbox = personal_ns_delimiter.join(path)
 		#TODO:vruyr:bugs Special chars, such as hierarchy delimiter, in path components should be escaped.
-		list_mailbox_content(conn=conn, mailbox=mailbox, show_in_mbox=opts.show_in_mbox, show_in_json=opts.show_in_json)
+		list_mailbox_content(conn=conn, mailbox=mailbox, show_in_mbox=opts.show_in_mbox, show_in_json=opts.show_in_json, flagged_only=opts.flagged_only, show_to_unless=opts.show_to_unless)
 	else:
 		list_mailboxes(conn=conn, show_in_json=opts.show_in_json)
 
@@ -150,7 +148,8 @@ email_policy = EmailPolicy(
 )
 
 
-def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox, show_in_mbox, show_in_json):
+def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox, show_in_mbox, show_in_json, flagged_only, show_to_unless):
+		show_to_unless = set(show_to_unless)
 		mailbox = imap_utf7_encode(mailbox)
 		mailbox = b'"' + mailbox + b'"' #TODO Why do we need to quotes here and what happens if the name already has a quote.
 		response_type, response_data = conn.select(mailbox, readonly=True)
@@ -185,11 +184,18 @@ def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox, show_in_mbox, show_in_
 			assert m["msgn"] == msgn, (msgn, m)
 			assert int(m["size"]) == len(message_data), (m, message_data)
 			assert envelope_end == b")"
-			flags = [f.decode("ASCII") for f in imaplib.ParseFlags(m["flags"])]
+			flags = set(f.decode("ASCII") for f in imaplib.ParseFlags(m["flags"]))
+			if "\\Seen" not in flags:
+				flags.add("\\Unseen")
+			flags -= {"\\Seen", "\\Answered"}
+			if flagged_only:
+				if "\\Flagged" not in flags:
+					continue
+				flags.remove("\\Flagged")
 			msg = email.message_from_bytes(message_data, policy=email_policy)
 			msgs.append((msg, flags))
 
-		msgs.sort(key=lambda msg_and_flags: msg_and_flags[0]["Date"])
+		msgs.sort(key=lambda msg_and_flags: email.utils.parsedate_to_datetime(msg_and_flags[0]["Date"]))
 		if show_in_mbox:
 			for msg, flags in msgs:
 				sys.stdout.buffer.write(msg.as_bytes(unixfrom=True, policy=email_policy))
@@ -205,18 +211,29 @@ def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox, show_in_mbox, show_in_
 			sys.stdout.write("\n")
 		else:
 			for msg, flags in msgs:
-				print(
-					"Date: {d}\tFrom: {f}\tTo: {t}\tSubject: {s!r}\tMessage-ID: {i}".format(
-						d=msg["Date"],
-						f=msg["From"],
-						t=msg["To"],
-						s=msg["Subject"],
-						i=msg["Message-ID"],
-					),
-					end="\n"
-				)
+				the_date = "{:<code>%Y-%m-%d</code> ⏱️ <code>%H:%M</code>}".format(email.utils.parsedate_to_datetime(msg["Date"]).astimezone())
+				the_from_name, the_from_address = parse_addressee_header(msg["From"])
+				the_to_name, the_to_address = parse_addressee_header(msg["To"])
+				to_part = ""
+				if the_to_address not in show_to_unless:
+					to_part = f" ➤ {the_to_address}"
+				the_subject = msg["Subject"]
+				the_msgid = msg["Message-ID"]
+				print(f"📫 {the_date} ◆ [{the_from_name}](mailto:{the_from_address}){to_part} ◇ [{the_subject}](message:{urllib.parse.quote(the_msgid)})", end="")
 				if flags:
-					print(flags)
+					print(end=" ")
+					print(*((f"#{f[1:]}" if f.startswith("\\") else f"`{f}`") for f in flags), sep=", ", end="")
+				print(end="\n")
+
+
+def parse_addressee_header(s):
+	mo = re.match(r"\s*(.*?)\s*<(.*)>\s*", s)
+	if not mo:
+		return (s, s)
+	name, address = mo.groups()
+	if mo := re.match(r"\s*\"(\S+)\s*,\s*(\S+)\"\s*", name):
+		name = mo.group(2) + " " + mo.group(1)
+	return (name, address)
 
 
 def list_mailboxes(*, conn, show_in_json):
@@ -297,11 +314,15 @@ def sysmain():
 	import argparse
 	parser = argparse.ArgumentParser()
 
+	message_selection_options = parser.add_argument_group("Message Selection Options")
+	message_selection_options.add_argument("--flagged-only", "--flagged", dest="flagged_only", action="store_true", default=False, help="Only list flagged messages when listing a mailbox content.")
+
 	output_options = parser.add_argument_group("Output Options")
-	output_options.add_argument("--json", "-j",    dest="show_in_json",        action="store_true", default=False)
-	output_options.add_argument("--verbose", "-v", dest="verbosity",           action="count",      default=0, help="increase verbosity, can be used multiple times")
-	output_options.add_argument("--quiet", "-q",   dest="_negative_verbosity", action="count",      default=0, help="decrease verbosity, can be used multiple times")
-	output_options.add_argument("--mbox",          dest="show_in_mbox",        action="store_true", default=False, help="if both --json and --mbox is passed, --mbox takes precedence")
+	output_options.add_argument("--json", "-j",     dest="show_in_json",        action="store_true", default=False)
+	output_options.add_argument("--verbose", "-v",  dest="verbosity",           action="count",      default=0, help="increase verbosity, can be used multiple times")
+	output_options.add_argument("--quiet", "-q",    dest="_negative_verbosity", action="count",      default=0, help="decrease verbosity, can be used multiple times")
+	output_options.add_argument("--mbox",           dest="show_in_mbox",        action="store_true", default=False, help="if both --json and --mbox is passed, --mbox takes precedence")
+	output_options.add_argument("--show-to-unless", dest="show_to_unless",      action="append",     default=[],    help="if the message was sent to an address not specified here, show it in the output")
 
 
 	connectivity = parser.add_argument_group("Connectivity")
