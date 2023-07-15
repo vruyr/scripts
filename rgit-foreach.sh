@@ -122,11 +122,9 @@ function incoming() {
 		done
 
 		git fetch --prune -q "$r"
-		local -a exclude_local_refs=()
-		while IFS='' read -r line; do [ "$line" ] && exclude_local_refs+=("^$line"); done < <(
-			git show-ref | grep -v " refs/remotes/" | cut -b -40
+		read -r -a exclude_local_refs < <(
+			git for-each-ref --format '^%(objectname) %(refname)' | grep -v ' refs/remotes/' | cut -b-41
 		)
-		unset line
 
 		any_new_tags="$(git fetch --prune --prune-tags --tags --dry-run "$r" 2>&1 | sed $'s/^/\t\t/')"
 
@@ -134,8 +132,14 @@ function incoming() {
 			output_messages+=( $'\n' "$any_new_tags" )
 		fi
 
-		if [ -n "$(git -P log --oneline "${exclusions[@]}" --remotes="$r" "${exclude_local_refs[@]}" -- )" ]; then
-			l="$(git -c color.ui="$color_ui" -P lg -10 --boundary "${exclusions[@]}" --remotes="$r" "${exclude_local_refs[@]}" -- | sed $'s/^/\t\t/')"
+		local -a exclude_tmp_commits=(
+			--invert-grep --grep='^TMP$' --grep='^TMP:'
+		)
+		local -a git_log_args=(
+			"${exclusions[@]}" --remotes="$r" "${exclude_local_refs[@]}"
+		)
+		if [ -n "$(git -P log --oneline "${git_log_args[@]}" "${exclude_tmp_commits[@]}" -- )" ]; then
+			l="$(git -c color.ui="$color_ui" -P lg -10 --boundary "${git_log_args[@]}" -- | sed $'s/^/\t\t/')"
 			output_messages+=( "$(printf "\n\t%s\n%s\x1b[0m\n" "$r" "$l")" )
 		fi
 	done
