@@ -2,7 +2,7 @@
 
 """
 Usage:
-	{prog} (push|pull) [options] <remote>
+	{prog} (push|pull|compare) [options] <remote>
 
 Options:
 	--force  Override worktree modifications
@@ -25,10 +25,11 @@ async def main(*, args, prog):
 		version=True,
 		options_first=False
 	)
-	pushpull = (params.pop("push"), params.pop("pull"))
-	assert pushpull not in ((True, True), (False, False)), pushpull
-	verb = "push" if pushpull == (True, False) else "pull"
-	del pushpull
+	verbs = ["push", "pull", "compare"]
+	verb = [i for i, v in enumerate(verbs) if params.pop(v)]
+	assert len(verb) == 1, verb
+	verb = verbs[verb[0]]
+	del verbs
 	remote_name = params.pop("<remote>")
 	shall_force = params.pop("--force")
 	assert not params, params
@@ -46,61 +47,58 @@ async def main(*, args, prog):
 	await git_local.verify_version()
 	git_remote = await git_local.create_remote_git(remote=remote_name)
 
-	await log.put("Making sure local and remote HEADs are the same.")
 	head_local = await git_local.get_rev_sha("HEAD")
 	head_remote = await git_remote.get_rev_sha("HEAD")
 	assert head_local == head_remote, (head_local, head_remote)
-	await log.put(["Both are at: ", head_local])
+	await log.put(["Both local and remote are at commit ", head_local])
 
-	if verb == "push":
-		if shall_force:
-			await log.put("Stashing remote changes.")
-			if remote_stash := await git_remote.stash_create():
-				await log.put(("Remote modifications are preserved in a stash ", remote_stash))
-			else:
-				await log.put("Nothing to stash.")
-			await git_remote.command("restore", "-s", "HEAD", "-W", "-S", ".", capture_output=False)
-
-		await log.put("Stashing local changes.")
+	if verb in ("push", "pull", "compare"):
 		if local_stash := await git_local.stash_create():
-			remote_stash_ref = f"refs/wtpp/stashes/{local_stash}"
-			await log.put(["Pushing the newly created stash to ", remote_name, " as ", remote_stash_ref])
-			await git_local.push("--no-verify", "--force", remote_name, f"{local_stash}:{remote_stash_ref}")
-			await log.put("Applying the stash on remote side.")
-			await git_remote.stash_apply(local_stash)
-			await log.put("Cleaning up.")
-			await git_remote.command("update-ref", "-d", remote_stash_ref)
+			await log.put(("Created a local stash  ", local_stash))
 		else:
 			await log.put("Nothing to stash.")
-	elif verb == "pull":
-		local_stash = None
-		if shall_force:
-			await log.put("Preserving local changes in a stash.")
-			if local_stash := await git_local.stash_create():
-				await log.put(("Created a local stash  ", local_stash))
-			else:
-				await log.put("Nothing to stash.")
 
-		await log.put("Stashing remote changes.")
 		if remote_stash := await git_remote.stash_create():
 			await log.put(["Created a remote stash ", remote_stash])
-			if remote_stash != local_stash:
-				#TODO Instead of creating a named reference, use something like: git fetch --upload-pack 'git -c uploadpack.allowAnySHA1InWant=true upload-pack' ssh://remote/~/repo af386f59e39f3f4d5606a25a341d63a09de55b73
-				remote_stash_ref = f"refs/wtpp/stashes/{remote_stash}"
-				await git_remote.command("update-ref", remote_stash_ref, remote_stash)
-				await log.put("Fetching the newly created stash.")
-				await git_local.fetch(remote_name, f"{remote_stash}")
-				if local_stash:
-					await log.put("Restoring local worktree to apply the stash.")
-					await git_local.command("restore", "-s", "HEAD", "-W", "-S", ".", capture_output=False)
-				await log.put("Applying the stash on local side.")
-				await git_local.stash_apply(remote_stash)
-				await log.put("Cleaning up.")
-				await git_remote.command("update-ref", "-d", remote_stash_ref)
-			else:
-				await log.put("Local and remote worktrees are identical.")
 		else:
 			await log.put("Nothing to stash.")
+
+		if remote_stash != local_stash:
+			remote_stash_ref = None
+
+			if verb == "push":
+				if shall_force:
+					await log.put("Clearing remote worktree.")
+					await git_remote.command("restore", "-s", "HEAD", "-W", "-S", ".", capture_output=False)
+				if local_stash:
+					remote_stash_ref = f"refs/wtpp/stashes/{local_stash}"
+					await log.put(["Pushing the newly created stash to ", remote_name, " as ", remote_stash_ref])
+					await git_local.push("--no-verify", "--force", remote_name, f"{local_stash}:{remote_stash_ref}")
+					await log.put("Applying the stash on remote side.")
+					await git_remote.stash_apply(local_stash)
+			elif verb == "pull":
+				if shall_force:
+					await log.put("Clearing local worktree.")
+					await git_local.command("restore", "-s", "HEAD", "-W", "-S", ".", capture_output=False)
+				if remote_stash:
+					#TODO Instead of creating a named reference, use something like: git fetch --upload-pack 'git -c uploadpack.allowAnySHA1InWant=true upload-pack' ssh://remote/~/repo af386f59e39f3f4d5606a25a341d63a09de55b73
+					remote_stash_ref = f"refs/wtpp/stashes/{remote_stash}"
+					await git_remote.command("update-ref", remote_stash_ref, remote_stash)
+					await log.put("Fetching the newly created stash.")
+					await git_local.fetch(remote_name, f"{remote_stash}")
+					await log.put("Applying the stash on local side.")
+					await git_local.stash_apply(remote_stash)
+			elif verb == "compare":
+				pass
+			else:
+				assert False, verb
+
+			if remote_stash_ref:
+				await log.put("Cleaning up references.")
+				await git_remote.command("update-ref", "-d", remote_stash_ref)
+
+		else:
+			await log.put("Local and remote worktrees are identical.")
 	else:
 		assert False, verb
 	#
@@ -117,26 +115,43 @@ async def main(*, args, prog):
 
 
 class Git(object):
-	def __init__(self, *, cmd=None, host=None, cwd=None, stdout_encoding="UTF-8"):
+	def __init__(self, *, cmd=None, host=None, user=None, cwd=None, stdout_encoding="UTF-8"):
 		if cmd is None:
 			cmd = ("git",)
 		self._host = host
+		self._user = user
 		self._cmd = cmd
 		self._cwd = cwd
 		self._stdout_encoding = stdout_encoding
+		self._is_windows = False
 
 	async def create_remote_git(self, *, remote):
 		remote_url = await self.config_get(f"remote.{remote}.url")
-		remote_url = urllib.parse.urlsplit(remote_url)
-		assert remote_url.scheme == "ssh", remote_url
-		assert remote_url.netloc == remote_url.hostname, remote_url
-		host = remote_url.hostname
-		repo_path = remote_url.path
-		if repo_path.startswith("/~/"):
-			repo_path = repo_path[1:]
+
+		host = None
+		user = None
+		repo_path = None
+
+		if m := re.match(r"^(?P<username>[^@]+)@(?P<hostname>[^:]+):(?P<path>.*)$", remote_url):
+			host = m["hostname"]
+			user = m["username"]
+			repo_path = m["path"]
+		else:
+			remote_url = urllib.parse.urlsplit(remote_url)
+			assert remote_url.scheme == "ssh", remote_url
+			assert remote_url.netloc == remote_url.hostname, remote_url
+			host = remote_url.hostname
+			repo_path = remote_url.path
+			if repo_path.startswith("/~/"):
+				repo_path = repo_path[1:]
+			elif m := re.match(r"^/([A-Za-z]):/(.*)$", repo_path):
+				repo_path = m[1] + ":/" + m[2]
+
 		remote_git_cmd = shlex.split(await self.config_get(f"wtpp.{host}.gitCmd") or "git")
+
 		remote_git = self.__class__(
 			host=host,
+			user=user,
 			cmd=list(remote_git_cmd),
 			stdout_encoding=self._stdout_encoding
 		)
@@ -148,6 +163,9 @@ class Git(object):
 		version = (await self.command("version", text_output=True)).rstrip("\n")
 		version = version.removeprefix("git version ").split(" ")[0]
 		version = version.split(".")
+		if version[-2] == "windows":
+			del version[-2:]
+			self._is_windows = True
 		version = list(map(int, version))
 		assert version[0] == 2 and version[1] >= 30 or version[0] > 2, list(version)
 
@@ -169,10 +187,16 @@ class Git(object):
 		else:
 			cmd = "ssh"
 			cmd_args = [self._host]
+			if self._user:
+				cmd_args += ["-l", self._user]
 			for k, v in (env or {}).items():
 				assert shlex.split(k) == [k], [k]
 				assert shlex.split(v) == [v], [v]
-				cmd_args.append(f"{k}={v}")
+				if self._is_windows:
+					assert "\"" not in k and "\"" not in v, (k, v)
+					cmd_args.append(f"set \"{k}={v}\" && ")
+				else:
+					cmd_args.append(f"{k}={v}")
 			cmd_args.extend(self._cmd)
 
 		if self._cwd:
