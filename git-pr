@@ -8,20 +8,34 @@ pr_num="$1"; shift
 worktree_root_dir="$HOME/Downloads"
 worktree_path="${worktree_root_dir}/$(basename "$(git rev-parse --show-toplevel)")-pr-$pr_num"
 
-IFS=$'\t' read base_label base_sha head_label head_sha < <( \
+IFS=$'\t' read pr_url base_url base_label base_sha head_label head_sha < <( \
 	gh api "repos/:owner/:repo/pulls/$pr_num" \
-	--jq '.base.label + "\t" + .base.sha + "\t" + .head.label + "\t" + .head.sha' \
+	--jq '.html_url + "\t" + .base.repo.clone_url + "\t" + .base.label + "\t" + .base.sha + "\t" + .head.label + "\t" + .head.sha' \
 )
 
+#TODO:vruyr Create branches pr/1000/base -> origin/main, pr/1000/review -> pr/1000/base, pr/1000/head -> pr/1000/review.
+#TODO:vruyr Set HEAD branch pr/1000/review instead of detaching it.
+#TODO:vruyr Print instructions on how to update the PR branches.
 
 git worktree add --detach "$worktree_path"
-cd "$worktree_path"
-gh pr checkout --detach "$pr_num"
-git update-ref refs/worktree/pr-base "$base_sha"
-git update-ref refs/worktree/pr-head "$head_sha"
-git restore -S -s refs/worktree/pr-base .
-printf 'Current branch: %s (%s)\nCompare with:   %s (%s)\n' "$head_sha" "$head_label" "$base_sha" "$base_label"
-pbcopy <<<"$base_sha"
-gh pr view --web "$pr_num"
-code "$worktree_path"
-smerge "$worktree_path"
+
+git -C "$worktree_path" fetch "$base_url" "$base_sha:refs/worktree/pr-base" "$head_sha:refs/worktree/pr-head"
+git -C "$worktree_path" switch --detach --discard-changes --recurse-submodules refs/worktree/pr-base
+git -C "$worktree_path" restore --worktree --source refs/worktree/pr-head -- .
+
+printf '\n\n'
+printf 'Pull Request URL: %s\n' "$pr_url"
+printf 'Working Copy: %s\n' "$worktree_path"
+printf '\n'
+
+gh pr checks "$pr_num" || true
+
+code "$worktree_path" || true
+smerge "$worktree_path" || true
+
+
+printf '\n\n'
+printf 'Stage all changes that look good and run:'
+printf '\n'
+printf '    git -C %q reset --soft refs/worktree/pr-head\n' "$worktree_path"
+printf '\n\n'
