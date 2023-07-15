@@ -46,32 +46,32 @@ def main(*, args, prog):
 		try:
 			git("update-ref", "--create-reflog", "--stdin", "-z", input=(
 				"start\0"
-				f"create refs/heads/wip/{wip_branch}\0{starting_point}\0"
-				f"create refs/heads/wip/zbase/{wip_branch}\0{upstream_branch}\0"
-				f"create refs/heads/wip/zdest/{wip_branch}\0{upstream_branch}\0"
+				f"create refs/heads/wip/{wip_branch}/head\0{starting_point}\0"
+				f"create refs/heads/wip/{wip_branch}/base\0{upstream_branch}\0"
+				f"create refs/heads/wip/{wip_branch}/dest\0{upstream_branch}\0"
 				"prepare\0"
 				"commit\0"
 			))
-			git("branch", f"wip/{wip_branch}",       "--set-upstream-to", f"wip/zbase/{wip_branch}")
-			git("branch", f"wip/zbase/{wip_branch}", "--set-upstream-to", f"wip/zdest/{wip_branch}")
-			git("branch", f"wip/zdest/{wip_branch}", "--set-upstream-to", f"{upstream_branch}")
+			git("branch", f"wip/{wip_branch}/head", "--set-upstream-to", f"wip/{wip_branch}/base")
+			git("branch", f"wip/{wip_branch}/base", "--set-upstream-to", f"wip/{wip_branch}/dest")
+			git("branch", f"wip/{wip_branch}/dest", "--set-upstream-to", f"{upstream_branch}")
 		except sp.CalledProcessError as e:
 			print(repr(e.cmd), ": ", e.returncode, sep="", file=sys.stderr)
 	elif verb == "rebase":
 		assert not git("status", "--porcelain=v2", stdout=sp.PIPE).stdout
 		print(f"Detaching HEAD from {wip_branch!r}")
-		git("switch", "--detach", f"refs/heads/wip/{wip_branch}")
+		git("switch", "--detach", f"refs/heads/wip/{wip_branch}/head")
 		print(f"Rebasing: from base of {wip_branch!r} to HEAD onto dest of {wip_branch!r}.")
-		git("rebase", f"refs/heads/wip/zbase/{wip_branch}", "HEAD", "--onto", f"refs/heads/wip/zdest/{wip_branch}") #TODO:vruyr This could fail because of conflicts.
-		patchid_old = git("patch-id", input=git("diff", f"refs/heads/wip/zbase/{wip_branch}", f"refs/heads/wip/{wip_branch}", "--", stdout=sp.PIPE).stdout, stdout=sp.PIPE).stdout.strip()
-		patchid_new = git("patch-id", input=git("diff", f"refs/heads/wip/zdest/{wip_branch}", f"HEAD",                        "--", stdout=sp.PIPE).stdout, stdout=sp.PIPE).stdout.strip()
+		git("rebase", f"refs/heads/wip/{wip_branch}/base", "HEAD", "--onto", f"refs/heads/wip/{wip_branch}/dest") #TODO:vruyr This could fail because of conflicts.
+		patchid_old = git("patch-id", input=git("diff", f"refs/heads/wip/{wip_branch}/base", f"refs/heads/wip/{wip_branch}/head", "--", stdout=sp.PIPE).stdout, stdout=sp.PIPE).stdout.strip()
+		patchid_new = git("patch-id", input=git("diff", f"refs/heads/wip/{wip_branch}/dest", f"HEAD",                             "--", stdout=sp.PIPE).stdout, stdout=sp.PIPE).stdout.strip()
 		assert patchid_old == patchid_new, (patchid_old, patchid_new) #TODO:vruyr This could fail because of conflict resolution.
-		print(f"Updating branch {wip_branch!r}")
-		git("fetch", ".", f"+HEAD:refs/heads/wip/{wip_branch}")
+		print(f"Updating head of {wip_branch!r}")
+		git("fetch", ".", f"+HEAD:refs/heads/wip/{wip_branch}/head")
 		print(f"Updating base of {wip_branch!r}")
-		git("fetch", ".", f"+refs/heads/wip/zdest/{wip_branch}:refs/heads/wip/zbase/{wip_branch}")
-		print(f"Switching to branch wip/{wip_branch!r}")
-		git("switch", f"wip/{wip_branch}")
+		git("fetch", ".", f"+refs/heads/wip/{wip_branch}/dest:refs/heads/wip/{wip_branch}/base")
+		print(f"Switching to branch {wip_branch!r}")
+		git("switch", f"wip/{wip_branch}/head")
 
 
 def git(*args, **kwargs):
