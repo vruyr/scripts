@@ -22,6 +22,10 @@ def main(opts):
 	url_qs_ssl = url_qs.pop("ssl", None)
 	assert not url_qs, url_qs
 
+	if opts.password_from:
+		with open(opts.password_from, "r") as fo:
+			opts.password = fo.read().rstrip("\n")
+
 	port     = port or imaplib.IMAP4_SSL_PORT
 	server   = opts.server   or hostname or input("Server Hostname: ")
 	username = opts.username or username or input("Username: ") or getpass.getuser()
@@ -326,11 +330,12 @@ def sysmain():
 
 
 	connectivity = parser.add_argument_group("Connectivity")
-	connectivity.add_argument("--account", "-a",  dest="account",  action="store", metavar="IMAP_URL", help="IMAP account to connect to as an imap://user@hostname/mailbox/path url")
-	connectivity.add_argument("--server", "-s",   dest="server",   action="store",               metavar="HOST",     help="host name or IP address of the IMAP server")
-	connectivity.add_argument("--user", "-u",     dest="username", action="store", default=None, metavar="USERNAME", help="default is {}".format(getpass.getuser()))
-	connectivity.add_argument("--password",       dest="password", action="store",               metavar="PASSWORD")
-	connectivity.add_argument("--path", "-p",     dest="path",     action="store",               metavar="MAILBOX_PATH")
+	connectivity.add_argument("--account", "-a",  dest="account",       action="store", metavar="IMAP_URL", help="IMAP account to connect to as an imap://user@hostname/mailbox/path url")
+	connectivity.add_argument("--server", "-s",   dest="server",        action="store",               metavar="HOST",     help="host name or IP address of the IMAP server")
+	connectivity.add_argument("--user", "-u",     dest="username",      action="store", default=None, metavar="USERNAME", help="default is {}".format(getpass.getuser()))
+	connectivity.add_argument("--password",       dest="password",      action="store",               metavar="PASSWORD")
+	connectivity.add_argument("--password-from",  dest="password_from", action="store",               metavar="PASSWORD_FILE")
+	connectivity.add_argument("--path", "-p",     dest="path",          action="store",               metavar="MAILBOX_PATH")
 
 	opts = parser.parse_args()
 	opts.verbosity -= opts._negative_verbosity
