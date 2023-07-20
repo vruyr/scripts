@@ -39,6 +39,7 @@ function main() {
 		r="$(cd "$HOME" && cd "$(git --git-dir "$r" rev-parse --git-path .)" && pwd)"
 		(
 			local curdir
+			local -a submodules
 			if [ "$(git -C "$r" --git-dir "$r" config --get --bool core.bare)" == "false" ]; then
 				local w
 				w="$(git -C "$r" config --default "${r%/.git}" --get core.worktree)"
@@ -46,15 +47,28 @@ function main() {
 					export GIT_DIR="$r"
 				fi
 				curdir="$w"
+				#shellcheck disable=SC2016
+				mapfile -t submodules < <(git -C "$curdir" submodule foreach --recursive --quiet 'echo "$displaypath"')
 			else
 				curdir="$r"
+				submodules=()
 			fi
 
 			cd "$curdir"
 			if [ -n "$show_path" ]; then
 				echo "$curdir"
 			fi
+
 			"$@" || :
+
+			unset GIT_DIR
+			for sm in "${submodules[@]}"; do
+				cd "$curdir/$sm"
+				if [ -n "$show_path" ]; then
+					echo "$curdir/$sm"
+				fi
+				"$@" || :
+			done
 		)
 	done
 }
@@ -244,4 +258,6 @@ function starts_with() {
 }
 
 
-main "$@"
+if ! (return 0 2>/dev/null); then
+	main "$@"
+fi
