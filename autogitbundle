@@ -42,18 +42,23 @@ async def main(*, args, prog):
 async def create_bundles(*, log):
 	"""
 	Configurations:
-		autogitbundle.<bundles_root_dir>.prefix
-			Current repo path must start with specified prefix.
-		autogitbundle.<bundles_root_dir>.suffix
-			Current repo path must end with specified suffix.
-			A bundle will be created at (bundles_root_dir + value) path.
-		autogitbundle.<bundles_root_dir>.suffixregex
-			Current repo path must end with a string that matches specified regex.
-			A bundle will be created at (bundles_root_dir + the_suffix_that_matched_value) path.
-		autogitbundle.<bundles_root_dir>.bundle
-			Besides matching prefix no additional conditions must be met.
-			A bundle will be created at (bundles_root_dir + value)
+		All configuration keys below should be in sections: autogitbundle.<bundles_root_dir>.
+		If bundles_root_dir is empty, current folder is used.
 
+		prefix
+			Current repo path must start with specified prefix.
+
+		suffix
+			Current repo path must end with specified suffix.
+
+		suffixregex
+			Current repo path must end with a string that matches specified regex.
+			The suffix value is the matching part.
+
+		bundle
+			Generate a bundle.
+			If the bundle config key doesn't have value, the suffix value is used.
+			The bundle will be created at (bundles_root_dir + value) path.
 
 	Example configuration:
 		[autogitbundle "~/Sync/zzz-git-bundles"]
@@ -81,28 +86,40 @@ async def create_bundles(*, log):
 
 		if key == "prefix":
 			repo_path_prefix = os.path.expanduser(value)
+			repo_path_suffix = None
 			continue
-		elif key == "suffix":
+
+		if key == "suffix":
 			repo_path_suffix = value
+			continue
+
+		if key == "suffixregex":
+			if re.fullmatch(re.escape(repo_path_prefix) + value, repo_path.as_posix()):
+				repo_path_suffix = strip_prefix(repo_path.as_posix(), repo_path_prefix, enforce=True)
+			else:
+				repo_path_suffix = None
+			continue
+
+		if key == "bundle":
+			bundle_path = value
+			repo_path_suffix = repo_path_suffix or bundle_path
+
+			if not (repo_path_prefix and repo_path_suffix):
+				continue
+
 			if not pathlib.Path(repo_path_prefix + repo_path_suffix).samefile(repo_path):
 				continue
-		elif key == "suffixregex":
-			if not re.fullmatch(re.escape(repo_path_prefix) + value, repo_path.as_posix()):
-				continue
-			repo_path_suffix = strip_prefix(repo_path.as_posix(), repo_path_prefix, enforce=True)
-		elif key == "bundle":
-			if not repo_path.as_posix().startswith(repo_path_prefix):
-				continue
-			repo_path_suffix = value
-		else:
-			await log.put(f"Unknown config key {key}")
+
+			bundle_path = bundle_path or repo_path_suffix
+			bundle_path = bundle_dir / (strip_suffix(bundle_path, ".git") + ".gitbundle")
+
+			bundle_path.parent.mkdir(parents=True, exist_ok=True)
+			await log.put(f"Creating bundle {bundle_path}")
+			await git.cmd("bundle", "create", str(bundle_path), "--all", stdout=False)
+
 			continue
 
-		bundle_path = bundle_dir / (strip_suffix(repo_path_suffix, ".git") + ".gitbundle")
-
-		bundle_path.parent.mkdir(parents=True, exist_ok=True)
-		await log.put(f"Creating bundle {bundle_path}")
-		await git.cmd("bundle", "create", str(bundle_path), "--all", stdout=False)
+		await log.put(f"Unknown config key {key}")
 
 
 class Git(object):
@@ -156,7 +173,8 @@ class Git(object):
 	_config_entry_key_pattern = re.compile(r"^([^.]+)\.(?:(.*)\.)?([^.]+)$")
 
 	def _split_config_entry(self, entry):
-		key, value = entry.split("\n", maxsplit=1)
+		# Use None if the config entry doesn't have a value.
+		key, value = (entry.split("\n", maxsplit=1) + [None])[:2]
 		m = self._config_entry_key_pattern.match(key)
 		if m is None:
 			raise ValueError(f"Got an invalid config key - {repr(key)}")
