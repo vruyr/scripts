@@ -1,3 +1,12 @@
 #!/usr/bin/env zsh
 
-git config --get-regex 'autogitbundle\..*\.prefix' | cut -d ' ' -f2- | sort -u | xargs -I {} find {} -type f -name HEAD -execdir zsh -c '[[ -f config && -d objects ]] && autogitbundle' \;
+prefixes=()
+for p in "${(u@)${(ps:\0:):-"$(git config --null --get-regex '^autogitbundle\..*\.prefix')"}#*$'\n'}"; do
+	if [[ "${p:(-1)}" == "/" ]]; then
+		prefixes+=( "${p%/}" )
+	else
+		prefixes+=( "$p"* )
+	fi
+done
+#TODO This approach has a problem where the same gitbundles will be generated multiple times if a repo is configured to generate multiple gitbundles where one prefix is a subfolder of another prefix.
+find "${prefixes[@]}" -type f -name HEAD -execdir zsh -c '[[ -f config && -d objects ]] && autogitbundle' \;

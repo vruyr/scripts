@@ -79,6 +79,7 @@ async def create_bundles(*, log):
 
 	repo_path_prefix = None
 	repo_path_suffix = None
+
 	async for bundle_dir, key, value in git.config_sections("autogitbundle"):
 		if bundle_dir is None:
 			bundle_dir = "."
@@ -94,28 +95,30 @@ async def create_bundles(*, log):
 			continue
 
 		if key == "suffixregex":
-			if re.fullmatch(re.escape(repo_path_prefix) + value, repo_path.as_posix()):
-				repo_path_suffix = strip_prefix(repo_path.as_posix(), repo_path_prefix, enforce=True)
-			else:
+			if (repo_path_suffix := strip_prefix(repo_path.as_posix(), repo_path_prefix, None)) is None:
+				continue
+			if not re.fullmatch(value, repo_path_suffix):
 				repo_path_suffix = None
 			continue
 
 		if key == "bundle":
-			bundle_path = value
-			repo_path_suffix = repo_path_suffix or bundle_path
+			prefix, suffix, bundle = repo_path_prefix, repo_path_suffix, value
+			repo_path_suffix = None
 
-			if not (repo_path_prefix and repo_path_suffix):
+			if suffix is None:
+				suffix = bundle
+
+			if prefix is None or suffix is None:
 				continue
 
-			if not pathlib.Path(repo_path_prefix + repo_path_suffix).samefile(repo_path):
-				continue
+			if pathlib.Path(prefix + suffix).samefile(repo_path):
+				bundle_path = bundle or suffix
+				assert bundle_path, (bundle_path,)
+				bundle_path = bundle_dir / (strip_suffix(bundle_path, ".git", bundle_path) + ".gitbundle")
 
-			bundle_path = bundle_path or repo_path_suffix
-			bundle_path = bundle_dir / (strip_suffix(bundle_path, ".git") + ".gitbundle")
-
-			bundle_path.parent.mkdir(parents=True, exist_ok=True)
-			await log.put(f"Creating bundle {bundle_path}")
-			await git.cmd("bundle", "create", str(bundle_path), "--all", stdout=False)
+				bundle_path.parent.mkdir(parents=True, exist_ok=True)
+				await log.put(f"Creating bundle {bundle_path}")
+				await git.cmd("bundle", "create", str(bundle_path), "--all", stdout=False)
 
 			continue
 
@@ -181,22 +184,22 @@ class Git(object):
 		return (m.groups(), value)
 
 
-def strip_prefix(s, prefix, *, enforce=False):
+def strip_prefix(s, prefix, default=None):
+	"""
+	Returns the suffix if prefix matches and value of the default argument otherwise.
+	"""
 	if s.startswith(prefix):
 		return s[len(prefix):]
-	elif not enforce:
-		return s
-	else:
-		raise ValueError(f"Provided string {s!r} does not have a prefix {prefix!r}.")
+	return default
 
 
-def strip_suffix(s, suffix, *, enforce=False):
+def strip_suffix(s, suffix, default=None):
+	"""
+	Returns the prefix if suffix matches and value of the default argument otherwise.
+	"""
 	if s.endswith(suffix):
 		return s[:-len(suffix)]
-	elif not enforce:
-		return s
-	else:
-		raise ValueError(f"Provided string {s!r} does not have a suffix {suffix!r}.")
+	return default
 
 
 async def printer(*, queue, fo):
