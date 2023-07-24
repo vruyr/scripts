@@ -5,7 +5,7 @@ Usage:
 	{prog}
 """
 
-import sys, locale, asyncio, subprocess, os, pathlib, re
+import sys, locale, asyncio, subprocess, os, pathlib, re, typing
 # pip install docopt==0.6.2
 import docopt
 
@@ -77,8 +77,20 @@ async def create_bundles(*, log):
 
 	repo_path = pathlib.Path.cwd()
 
-	repo_path_prefix = None
-	repo_path_suffix = None
+	repo_path_prefix: str | None = None
+	repo_path_suffix: str | re.Pattern[str] | None = None
+
+	# prefix
+	# 	Always a string unless misconfigured.
+	# 	There should always be a prefix before suffix or bundle.
+	#
+	# suffix
+	#	str
+	# 		The configured suffix. A bundle will be created if repo is at (prefix + suffix) path.
+	#	re.Pattern
+	# 		The suffix regex. A bundle will be created with regex matches what's left after removing a matching prefix.
+	#	None
+	# 		A suffix was not configured. The "prefix" was followed by "bundle".
 
 	async for bundle_dir, key, value in git.config_sections("autogitbundle"):
 		if bundle_dir is None:
@@ -86,6 +98,7 @@ async def create_bundles(*, log):
 		bundle_dir = repo_path.parent / os.path.expanduser(bundle_dir)
 
 		if key == "prefix":
+			assert value is not None
 			repo_path_prefix = os.path.expanduser(value)
 			repo_path_suffix = None
 			continue
@@ -95,15 +108,24 @@ async def create_bundles(*, log):
 			continue
 
 		if key == "suffixregex":
-			if (repo_path_suffix := strip_prefix(repo_path.as_posix(), repo_path_prefix, None)) is None:
-				continue
-			if not re.fullmatch(value, repo_path_suffix):
-				repo_path_suffix = None
+			assert value is not None
+			repo_path_suffix = re.compile(value)
 			continue
 
 		if key == "bundle":
 			prefix, suffix, bundle = repo_path_prefix, repo_path_suffix, value
 			repo_path_suffix = None
+
+			if isinstance(suffix, re.Pattern):
+				s = strip_prefix(repo_path.as_posix(), prefix, None)
+				if s is None:
+					# prefix didn't match
+					continue
+				if not suffix.fullmatch(s):
+					# suffix regex didn't match
+					continue
+				suffix = s
+				del s
 
 			if suffix is None:
 				suffix = bundle
@@ -111,7 +133,8 @@ async def create_bundles(*, log):
 			if prefix is None or suffix is None:
 				continue
 
-			if pathlib.Path(prefix + suffix).samefile(repo_path):
+			p = pathlib.Path(prefix + suffix)
+			if p.exists() and p.samefile(repo_path):
 				bundle_path = bundle or suffix
 				assert bundle_path, (bundle_path,)
 				bundle_path = bundle_dir / (strip_suffix(bundle_path, ".git", bundle_path) + ".gitbundle")
@@ -153,7 +176,7 @@ class Git(object):
 		assert stdout_bytes is None or isinstance(stdout_bytes, bytes), (stdout_bytes,)
 		assert stderr_bytes is None or isinstance(stderr_bytes, bytes), (stderr_bytes)
 		if stderr_bytes:
-			raise RuntimeError(f"git command {args} produced stderr output - {stderr_bytes}")
+			raise RuntimeError(f"git command {args} in {os.getcwd()} produced stderr output - {stderr_bytes}")
 		return stdout_bytes.decode(self._encoding) if decode else stdout_bytes
 
 	async def config(self, *args, decode=True, single=True):
@@ -166,7 +189,7 @@ class Git(object):
 			out = out[0]
 		return out
 
-	async def config_sections(self, section_name):
+	async def config_sections(self, section_name) -> typing.Generator[typing.Tuple[str | None, str, str | None], None, None]:
 		out = await self.config("--get-regexp", re.escape(section_name) + r"\..*", single=False)
 		for c in out:
 			(section, middle, key), value = self._split_config_entry(c)
@@ -175,9 +198,11 @@ class Git(object):
 
 	_config_entry_key_pattern = re.compile(r"^([^.]+)\.(?:(.*)\.)?([^.]+)$")
 
-	def _split_config_entry(self, entry):
+	def _split_config_entry(self, entry: str) -> typing.Tuple[str, str | None, str, str | None]:
 		# Use None if the config entry doesn't have a value.
+		key: str
 		key, value = (entry.split("\n", maxsplit=1) + [None])[:2]
+		m: re.Match[str] | None
 		m = self._config_entry_key_pattern.match(key)
 		if m is None:
 			raise ValueError(f"Got an invalid config key - {repr(key)}")
