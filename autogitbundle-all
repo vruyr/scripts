@@ -2,7 +2,9 @@
 
 prefixes=()
 for p in "${(u@)${(ps:\0:):-"$(git config --null --get-regex '^autogitbundle\..*\.prefix')"}#*$'\n'}"; do
-	if [[ "${p:(-1)}" == "/" ]]; then
+	if [[ "$p" == "~" ]]; then
+		prefixes+=( "${HOME%/}" )
+	elif [[ "${p:(-1)}" == "/" ]]; then
 		p="${p%/}"
 		prefixes+=( ${~:-"$p"} )
 	else
@@ -10,9 +12,20 @@ for p in "${(u@)${(ps:\0:):-"$(git config --null --get-regex '^autogitbundle\..*
 	fi
 done
 prefixes=( "${(u)prefixes[@]%/}" )
-#TODO This approach has a problem where the same gitbundles will be generated multiple times if a repo is configured to generate multiple gitbundles where one prefix is a subfolder of another prefix.
-find "${prefixes[@]}" -type f -name HEAD -execdir zsh -c '
-	[[ -f config && -d objects ]] || exit
-	cd "${"$(git config --get core.worktree)":-${PWD%/.git}}"
-	autogitbundle
-' \;
+
+typeset -A repos
+repos=( ${(f)"$(
+	find "${prefixes[@]}" -type d -name objects -execdir zsh -c '
+		printf >&2 '.'
+		[[ -f config && -f HEAD ]] || exit
+		echo "${${"$(git config --get core.worktree)":-${PWD%/.git}}:A}"
+		echo "${"$(git rev-parse --git-path .)":A}"
+	' \;
+)"} )
+
+printf >&2 '\n'
+
+for worktree gitdir in "${(@kv)repos}"; do
+	(cd "$worktree" && export GIT_DIR="$gitdir" && autogitbundle)
+	(cd "$gitdir" && autogitbundle)
+done
