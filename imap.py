@@ -177,7 +177,11 @@ def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox, show_in_mbox, show_in_
 			#TODO:vruyr If show_in_mbox or show_in_json is true, fetch all the parts, not just the header.
 			response_type, response_data = conn.fetch(msgn, msg_fetch_parts)
 			assert response_type == "OK", (response_type, response_data)
-			(envelope_start, message_data), envelope_end = response_data
+			try:
+				(envelope_start, message_data), envelope_end = response_data
+			except:
+				print(response_data)
+				raise
 			m = msg_fetch_response_pattern.match(envelope_start)
 			if not m:
 				print("Pattern:", msg_fetch_response_pattern)
