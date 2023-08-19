@@ -139,23 +139,18 @@ function processDocument(document, shouldUpdate) {
 		return p1.lastReviewDate() - p2.lastReviewDate();
 	});
 
+	var columnWidths = [projectIndexWidth, Math.min(maxProjectNameLen, 88), 25, 10, 22, 10]
 	var columns = [
-		ljust("#", projectIndexWidth),
-		ljust("Project Name", maxProjectNameLen),
-		ljust("Old Last Review Date", 25),
-		ljust("Old Next Review Date", 25),
-		ljust("Old Review Interval", 25),
-		ljust("New Next Review Date", 25),
+		ljust("#",            columnWidths[0]),
+		ljust("Project Name", columnWidths[1]),
+		ljust("Old Last",     columnWidths[2]),
+		ljust("Old Next",     columnWidths[3]),
+		ljust("Old Interval", columnWidths[4]),
+		ljust("New Next",     columnWidths[5]),
 	];
 	$.printf(columns.join(columnPadding) + "\n");
-	columns = [
-		"-".repeat(projectIndexWidth),
-		"-".repeat(maxProjectNameLen),
-		"-".repeat(25),
-		"-".repeat(25),
-		"-".repeat(25),
-		"-".repeat(25),
-	];
+	(new Array(5)).fill("-")
+	columns = (new Array(columnWidths.length)).fill("-").map((x, i) => x.repeat(columnWidths[i]));
 	$.printf(columns.join(columnPadding) + "\n");
 
 	function countProjectsPerDay(counts, projectNextReviewDate) {
@@ -188,13 +183,15 @@ function processDocument(document, shouldUpdate) {
 		countProjectsPerDay(projectsOnDateAfter, dateToStr(nextReviewDate));
 
 		var columns = [
-			ljust((i + 1).toLocaleString(), projectIndexWidth),
-			ljust(project.name(), maxProjectNameLen),
+			(i + 1).toLocaleString(),
+			project.name(),
 			dateToStr(project.lastReviewDate()),
 			dateToStr(project.nextReviewDate()),
-			ljust(repetitionIntervalToString(project.reviewInterval()), 25),
+			repetitionIntervalToString(project.reviewInterval()),
 			dateToStr(nextReviewDate),
-		];
+		].map((x, i) => (
+			ljust(x, columnWidths[i])
+		));
 		$.printf(columns.join(columnPadding) + "\n");
 
 		if(shouldUpdate) {
@@ -250,7 +247,7 @@ function getHelpText(options) {
 }
 
 function ljust(s, len) {
-	return s + " ".repeat(len - s.length);
+	return s + " ".repeat(Math.max(len - s.length, 0));
 }
 
 
@@ -342,7 +339,14 @@ function dateToStr(d) {
 	var hours = zpadStrInt(d.getHours(), 2);
 	var minutes = zpadStrInt(d.getMinutes(), 2);
 	var seconds = zpadStrInt(d.getSeconds(), 2);
-	return `${d.getFullYear()}-${month}-${date} ${hours}:${minutes}:${seconds} ${tzStr(d)}`;
+	var theDate = `${d.getFullYear()}-${month}-${date}`;
+	var theTime = `${hours}:${minutes}:${seconds}`;
+	var theZone = `${tzStr(d)}`;
+	if(theTime === "00:00:00") {
+		return theDate;
+	} else {
+		return `${theDate} ${theTime} ${theZone}`;
+	}
 }
 
 
