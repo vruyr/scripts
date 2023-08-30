@@ -84,7 +84,7 @@ def main(opts):
 	if path:
 		mailbox = personal_ns_delimiter.join(path)
 		#TODO:vruyr:bugs Special chars, such as hierarchy delimiter, in path components should be escaped.
-		list_mailbox_content(conn=conn, mailbox=mailbox, show_in_mbox=opts.show_in_mbox, show_in_json=opts.show_in_json, flagged_only=opts.flagged_only, show_to_unless=opts.show_to_unless)
+		list_mailbox_content(conn=conn, mailbox=mailbox, show_in_mbox=opts.show_in_mbox, show_in_json=opts.show_in_json, flagged_only=opts.flagged_only, hide_to_if=opts.hide_to_if)
 	else:
 		list_mailboxes(conn=conn, show_in_json=opts.show_in_json)
 
@@ -152,8 +152,8 @@ email_policy = EmailPolicy(
 )
 
 
-def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox, show_in_mbox, show_in_json, flagged_only, show_to_unless):
-		show_to_unless = set(show_to_unless)
+def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox, show_in_mbox, show_in_json, flagged_only, hide_to_if):
+		hide_to_if = set(hide_to_if)
 		mailbox = imap_utf7_encode(mailbox)
 		mailbox = b'"' + mailbox + b'"' #TODO Why do we need to quotes here and what happens if the name already has a quote.
 		response_type, response_data = conn.select(mailbox, readonly=True)
@@ -219,15 +219,16 @@ def list_mailbox_content(*, conn: imaplib.IMAP4, mailbox, show_in_mbox, show_in_
 			sys.stdout.write("\n")
 		else:
 			for msg, flags in msgs:
-				the_date = "{:<code>%Y-%m-%d</code> ⏱️ <code>%H:%M</code>}".format(email.utils.parsedate_to_datetime(msg["Date"]).astimezone())
+				# the_date = "{:<code>%Y-%m-%d</code> ⏱️ <code>%H:%M</code>}".format(email.utils.parsedate_to_datetime(msg["Date"]).astimezone())
+				the_date = email.utils.parsedate_to_datetime(msg["Date"]).astimezone().isoformat()
 				the_from_name, the_from_address = parse_addressee_header(msg["From"])
 				the_to_name, the_to_address = parse_addressee_header(msg["To"])
 				to_part = ""
-				if the_to_address not in show_to_unless:
+				if the_to_address not in hide_to_if:
 					to_part = f" ➤ {the_to_address}"
 				the_subject = msg["Subject"]
 				the_msgid = msg["Message-ID"]
-				print(f"📫 {the_date} ◆ [{the_from_name}](mailto:{the_from_address}){to_part} ◇ [{the_subject}](message:{urllib.parse.quote(the_msgid)})", end="")
+				print(f"- 📫 (date::{the_date}) ◇ [{the_from_name}](mailto:{the_from_address}){to_part} ◆ [{the_subject}](message:{urllib.parse.quote(the_msgid)})", end="")
 				if flags:
 					print(end=" ")
 					print(*((f"#{f[1:]}" if f.startswith("\\") else f"`{f}`") for f in flags), sep=", ", end="")
@@ -330,7 +331,7 @@ def sysmain():
 	output_options.add_argument("--verbose", "-v",  dest="verbosity",           action="count",      default=0, help="increase verbosity, can be used multiple times")
 	output_options.add_argument("--quiet", "-q",    dest="_negative_verbosity", action="count",      default=0, help="decrease verbosity, can be used multiple times")
 	output_options.add_argument("--mbox",           dest="show_in_mbox",        action="store_true", default=False, help="if both --json and --mbox is passed, --mbox takes precedence")
-	output_options.add_argument("--show-to-unless", dest="show_to_unless",      action="append",     default=[],    help="if the message was sent to an address not specified here, show it in the output")
+	output_options.add_argument("--hide-to-if",     dest="hide_to_if",          action="append",     default=[],    help="if the message was sent to an address not specified here, show it in the output")
 
 
 	connectivity = parser.add_argument_group("Connectivity")
