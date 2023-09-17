@@ -41,7 +41,7 @@ defaults write "$app_path/Contents/Info.plist" CFBundleIdentifier -string "$app_
 plutil -convert xml1 "$app_path/Contents/Info.plist"
 
 while [ "$app_bundle_id" != "$(mdls -raw -name kMDItemCFBundleIdentifier "$app_path")" ]; do
-	sleep 0.25s
+	sleep 0.25
 	printf '.'
 done
 printf '\n'
@@ -53,8 +53,8 @@ tccutil reset All "$app_bundle_id" || {
 osascript -e '
 	tell application "System Preferences"
 		activate
-		reveal anchor "Privacy_Accessibility" of pane "com.apple.preference.security"
-		authorize pane "com.apple.preference.security"
+		reveal anchor "Privacy_Accessibility" of pane "com.apple.settings.PrivacySecurity.extension"
+		authorize pane "com.apple.settings.PrivacySecurity.extension"
 	end tell
 	""
 '
