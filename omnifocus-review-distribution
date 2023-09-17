@@ -123,7 +123,8 @@ function processDocument(document, shouldUpdate) {
 	var numReviewProjectsPerWeekLeftover = openProjects.length - (numReviewProjectsPerWeek * reviewInterval.steps);
 	var nextReviewDate = new Date();
 	nextReviewDate.setHours(0, 0, 0, 0);
-	nextReviewDate.setDate(nextReviewDate.getDate() + (reviewDayOfWeek - nextReviewDate.getDay()));
+	// The Date object seems to work correctly when the new date is larger than there are days in the month.
+	nextReviewDate.setDate(nextReviewDate.getDate() + (reviewDayOfWeek - 7 - nextReviewDate.getDay()));
 
 	$.printf(`Collected ${openProjects.length} open projects.\n`);
 	$.printf(`Reviewing projects on ${daysOfWeeks[reviewDayOfWeek]} ${repetitionIntervalToString(reviewInterval)}.\n`);
