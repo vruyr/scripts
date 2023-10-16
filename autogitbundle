@@ -137,7 +137,7 @@ async def create_bundles(*, log):
 			if p.exists() and p.samefile(repo_path):
 				bundle_path = bundle or suffix
 				assert bundle_path, (bundle_path,)
-				bundle_path = bundle_dir / (strip_suffix(bundle_path, ".git", bundle_path) + ".gitbundle")
+				bundle_path = bundle_dir / (strip_suffix(bundle_path, ".git", bundle_path) + "")
 
 				bundle_path.parent.mkdir(parents=True, exist_ok=True)
 				await log.put(f"Creating bundle {bundle_path}")
