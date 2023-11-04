@@ -21,7 +21,7 @@ function main() {
 
 	all_repos=()
 	while IFS='' read -r line; do [ "$line" ] && all_repos+=("$line"); done < <(
-		jq <~/.rgit.json -r '.repositories[]' | tr -d '\r'
+		jq <~/.config/rgit/config.json -r '.repositories[]' | tr -d '\r'
 	)
 	unset line
 
@@ -39,19 +39,15 @@ function main() {
 		r="$(cd "$HOME" && cd "$(git --git-dir "$r" rev-parse --git-path .)" && pwd)"
 		(
 			local curdir
-			local -a submodules
 			if [ "$(git -C "$r" --git-dir "$r" config --get --bool core.bare)" == "false" ]; then
 				local w
 				w="$(git -C "$r" config --default "${r%/.git}" --get core.worktree)"
 				if [ "${r#"$w"}" != ".git" ]; then
 					export GIT_DIR="$r"
 				fi
-				curdir="$w"
-				#shellcheck disable=SC2016
-				mapfile -t submodules < <(git -C "$curdir" submodule foreach --recursive --quiet 'echo "$displaypath"')
+				curdir="$(cd "$r" && cd "$w" && pwd)"
 			else
 				curdir="$r"
-				submodules=()
 			fi
 
 			cd "$curdir"
@@ -62,13 +58,6 @@ function main() {
 			"$@" || :
 
 			unset GIT_DIR
-			for sm in "${submodules[@]}"; do
-				cd "$curdir/$sm"
-				if [ -n "$show_path" ]; then
-					echo "$curdir/$sm"
-				fi
-				"$@" || :
-			done
 		)
 	done
 }
