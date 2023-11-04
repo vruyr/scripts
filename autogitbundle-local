@@ -1,0 +1,21 @@
+#!/usr/bin/env zsh
+
+setopt ERR_EXIT
+
+local_bundle_path="$(git remote get-url local)"
+
+refs_local="$(git rev-parse --verify HEAD) HEAD"$'\n'"$(git for-each-ref --exclude 'refs/remotes/**' --format '%(objectname) %(refname)')"
+refs_bundle="$(git bundle list-heads "$local_bundle_path")"
+
+if [ "$refs_local" = "$refs_bundle" ]; then
+	echo "Up-to-date: $local_bundle_path"
+	exit 0
+fi
+
+echo "$local_bundle_path"
+git bundle create --quiet "$local_bundle_path" --stdin < <(
+	echo HEAD
+	git for-each-ref --exclude 'refs/remotes/**' --format '%(refname)'
+)
+git ls-remote "$local_bundle_path"
+git fetch --prune local

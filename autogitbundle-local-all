@@ -1,0 +1,3 @@
+#!/usr/bin/env zsh
+
+rgit-foreach.sh zsh -c 'git remote | grep -q local && pwd && (autogitbundle-local && git fetch --prune local) | sed "s/^/    /"'
