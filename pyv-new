@@ -1,0 +1,43 @@
+#!/usr/bin/env zsh
+
+function pyv-new() {
+	if ! [ -d "$PYV_ROOT_DIR" ]; then
+		echo >&2 "The PYV_ROOT_DIR environment variable is not set - doing nothing."
+		return 1
+	fi
+	mkdir -p "$PYV_ROOT_DIR"
+	local pyvenv_name="$1"
+	if [ -z "$pyvenv_name" ]; then
+		echo >&2 "ERROR: Please provide a name for the new Python Virtual Environment as the first parameter."
+		return 2
+	fi
+	local pyexe="$2"
+	if [ -z "$pyexe" ]; then
+		pyexe=/Library/Frameworks/Python.framework/Versions/Current/bin/python3
+	fi
+	pyexe="$("$pyexe" - <<-EOT
+		import sys, pathlib
+		print(pathlib.Path(sys.executable).resolve())
+		EOT
+	)"
+
+	echo "Python executable:   ${(D)pyexe}"
+
+	local pyimpl="$("$pyexe" - <<-EOT 
+		import platform
+		print(
+			platform.python_implementation().lower(),
+			"-",
+			platform.python_version(), 
+			sep=""
+		)
+		EOT
+	)"
+	local pyvenv_dir=$PYV_ROOT_DIR/$pyvenv_name-$pyimpl
+
+	"$pyexe" -m venv "$pyvenv_dir"
+
+	echo "Virtial environment: ${(D)pyvenv_dir}"
+}
+
+pyv-new "$@"
