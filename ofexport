@@ -127,7 +127,7 @@ function taskToObsidianText(task) {
 	let mainLine = `- ${taskName}`;
 	mainLine += ` [added::${creationDate}]`;
 	if(modificationDate !== creationDate) {
-		mainLine += ` [modified::${modificationDate}]`;
+		mainLine += `  [modified::${modificationDate}]`;
 	}
 
 	line(0, mainLine);
