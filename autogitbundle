@@ -139,9 +139,12 @@ async def create_bundles(*, log):
 				assert bundle_path, (bundle_path,)
 				bundle_path = bundle_dir / (strip_suffix(bundle_path, ".git", bundle_path) + "")
 
-				bundle_path.parent.mkdir(parents=True, exist_ok=True)
-				await log.put(f"Creating bundle {bundle_path}")
-				await git.cmd("bundle", "create", str(bundle_path), "--all", stdout=False)
+				if await git.is_bundle_out_of_date(bundle_path):
+					bundle_path.parent.mkdir(parents=True, exist_ok=True)
+					await log.put(f"Creating bundle {bundle_path}")
+					await git.cmd("bundle", "create", str(bundle_path), "--all", stdout=False)
+				else:
+					await log.put(f"Bundle is up to date: {bundle_path}")
 
 			continue
 
@@ -153,6 +156,32 @@ class Git(object):
 		self._output = output_queue
 		self._git_path = git_path
 		self._encoding = encoding
+
+	async def get_all_refs(self):
+		result = {
+			"HEAD": (await self.cmd("rev-parse", "--verify", "HEAD", decode=True)).strip(),
+		}
+		refs = await self.cmd("for-each-ref", "--format", "%(objectname) %(refname)", decode=True)
+		for ref0 in refs.splitlines(keepends=False):
+			oid, sep, ref = ref0.partition(" ")
+			assert sep == " ", (ref0,)
+			result[ref] = oid
+		return result
+
+	async def bundle_list_refs(self, bundle_path, /):
+		result = {}
+		refs = await self.cmd("bundle", "list-heads", str(bundle_path), decode=True)
+		for ref0 in refs.splitlines(keepends=False):
+			oid, sep, ref = ref0.partition(" ")
+			result[ref] = oid
+		return result
+
+	async def is_bundle_out_of_date(self, bundle_path, /):
+		if not bundle_path.exists():
+			return True
+		heads_repo = await self.get_all_refs()
+		heads_bundle = await self.bundle_list_refs(bundle_path)
+		return heads_repo != heads_bundle
 
 	async def cmd(self, *args, stdin_data=None, stdout=True, stderr=True, decode=False):
 		if isinstance(stdin_data, str):
