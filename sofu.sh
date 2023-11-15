@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# External Dependencies
+the_bin_column="$(which column)"
+
 function check_version() {
 	local versinfo="$1"
 	shift
@@ -126,12 +129,14 @@ function main() {
 		fi
 	fi
 	if [ "$homebrew_outdated" ]; then
+		# Upgrade all: brew upgrade --formula
 		echo "--- $brew_path_pretty outdated --formula"
 		eval_indent '"$brew_path" outdated --formula --verbose'
 	fi
 	if [ "$homebrew_cask_outdated" ]; then
+		# Upgrade all: brew upgrade --cask --greedy
 		echo "--- $brew_path_pretty outdated --cask"
-		eval_indent '"$brew_path" outdated --cask --verbose --greedy'
+		eval_indent show_outdated_casks
 	fi
 	if [ "$homebrew_bundle_cleanup" ]; then
 		echo "--- $brew_path_pretty bundle cleanup"
@@ -141,6 +146,7 @@ function main() {
 		eval_indent '"$brew_path" bundle cleanup --file=- <<<"$patched_brewfile_content"'
 	fi
 	if [ "$npm_outdated" ]; then
+		# Upgrade all: npm outd -g --json | jq 'keys[]|.+"@latest"' -r | tr '\n' '\0' | xargs -0 npm i -g
 		if type >/dev/null 2>&1 npm; then
 			echo "--- npm outdated"
 			eval_indent 'npm outdated --location=global'
@@ -149,6 +155,7 @@ function main() {
 		fi
 	fi
 	if [ "$pyv_outdated" ]; then
+		# Upgrade all: for p in ~pyv/*/bin/python; do "$p" -m pip install -U setuptools wheel pip; done
 		if [ -n "$PYV_ROOT_DIR" ]; then
 			echo "--- pyv: $PYV_ROOT_DIR"
 			#shellcheck disable=SC2016
@@ -178,6 +185,69 @@ function main() {
 	echo ...
 }
 
+function show_outdated_casks() {
+	outdated_casks_json="$("$brew_path" outdated --cask --greedy --json)"
+
+	# "$brew_path" outdated --cask --verbose --greedy
+	echo "Outdated"
+	eval_indent <<<"$outdated_casks_json" format_brew_outdated_cask_json
+	show_running_apps_from_brew_outdated_cask_json <<<"$outdated_casks_json"
+}
+
+function format_brew_outdated_cask_json() {
+	jq -r '
+		.casks[]|.name + "\t" + (.installed_versions | join(", ")) + "\t-> " + .current_version
+	' \
+	| "$the_bin_column" -s $'\t' -t
+}
+
+function show_running_apps_from_brew_outdated_cask_json() {
+	outdated_cask_app_bundle_paths="$(
+		jq --raw-output0 '.casks[]|.name' | \
+		xargs -r0 "$brew_path" info --json=v2 --cask | \
+		jq \
+			--raw-output0 \
+			--arg caskroom "$("$brew_path" --prefix)/Caskroom" \
+			'
+				.casks[]
+				| {token: .full_token, version: .installed, artifacts: .artifacts}
+				| .artifacts = (.artifacts | reduce (.[]|to_entries[]) as $i ({}; .[$i.key] |= ((. // []) + $i.value)))
+				| delpaths([["artifacts", "zap"], ["artifacts", "binary"]])
+				| select(.artifacts.app)
+				| . as $cask
+				| ($cask.artifacts.app[] | $caskroom + "/" + $cask.token + "/" + $cask.version + "/" + .)
+			' | \
+		xargs -r0n1 readlink
+	)"
+
+	tr <<<"$outdated_cask_app_bundle_paths" '\n' '\0' | \
+	xargs -r0 osascript -l AppleScript -e '
+		on run argv
+			tell application "System Events" to set allRunningApps to (POSIX path of file of processes)
+
+			set appsRunning to {}
+			set appsNotRunning to {}
+
+			repeat with appBundlePath in argv
+				if allRunningApps contains appBundlePath then
+					set end of appsRunning to (appBundlePath as string)
+				else
+					set end of appsNotRunning to (appBundlePath as string)
+				end if
+			end repeat
+
+			log "Running"
+			repeat with i in appsRunning
+				log tab & i & return
+			end repeat
+
+			log "Not Running"
+			repeat with i in appsNotRunning
+				log tab & i & return
+			end repeat
+		end run
+	'
+}
 
 function show_pyv_updates() {
 	rootdir="$1"
