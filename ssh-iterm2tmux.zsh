@@ -7,12 +7,12 @@ ssh_remote_command_and_args=(
 
 	'\;'
 
-	set-option -g 
+	set-option -g
 		default-terminal "${(q)TERM}"
 
 	'\;'
 
-	new-session -A 
+	new-session -A
 		-s iterm2
 		-e LC_TERMINAL="${(q)LC_TERMINAL}"
 		-e LC_TERMINAL_VERSION="${(q)LC_TERMINAL_VERSION}"
