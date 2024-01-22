@@ -1,0 +1,25 @@
+#!/usr/bin/env zsh
+
+if [ $# -eq 1 -a "$1" = "--known-hosts" ]; then
+	cat ~/.ssh/known_hosts
+	exit 0
+fi
+
+askpass_expected_suffix="'s password: "
+if [ $# -eq 1 -a "${1:(-${#askpass_expected_suffix})}" = "$askpass_expected_suffix" ]; then
+	# Assuming the password is "1"
+	echo 1
+	exit 0
+fi
+
+export SSH_ASKPASS="${0:A}"
+export SSH_ASKPASS_REQUIRE='force'
+ssh_opts=(
+	-o StrictHostKeyChecking=accept-new
+	-o UserKnownHostsFile=/dev/null
+	# The UserKnownHostsFile above is to prevent adding new host keys,
+	# and the KnownHostsCommand below is to check against existing host keys.
+	-o KnownHostsCommand="${0:A} --known-hosts"
+	-o LogLevel=ERROR
+)
+exec ssh "${ssh_opts[@]}" "$@"
