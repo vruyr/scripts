@@ -189,14 +189,21 @@ function show_outdated_casks() {
 	outdated_casks_json="$("$brew_path" outdated --cask --greedy --json)"
 
 	# "$brew_path" outdated --cask --verbose --greedy
-	echo "Outdated"
 	eval_indent <<<"$outdated_casks_json" format_brew_outdated_cask_json
 	show_running_apps_from_brew_outdated_cask_json <<<"$outdated_casks_json"
 }
 
 function format_brew_outdated_cask_json() {
 	jq -r '
-		.casks[]|.name + "\t" + (.installed_versions | join(", ")) + "\t-> " + .current_version
+		if (.casks|length) > 0 then
+			([
+				"Outdated"
+			] + [
+				(.casks[]|.name + "\t" + (.installed_versions | join(", ")) + "\t-> " + .current_version)
+			])[]
+		else
+			""
+		end
 	' \
 	| "$the_bin_column" -s $'\t' -t
 }
