@@ -1,3 +1,4 @@
 #{{{ Cache
-/.idea/
+# Created with: swiftc print-year-and-week.swift
+/print-year-and-week
 #}}}
