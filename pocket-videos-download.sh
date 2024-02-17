@@ -143,7 +143,7 @@ if [ -z "$finish_existing" ]; then
 	unset urls
 fi
 find . -type f \( -name '*.webp' -o -name '*.jpg' \) -exec "$selfdir/pocket-videos-finish-embedding-thumbnails.sh" {} +
-unrecognized_files="$(find . -type f -not -name '*.mp4' -not -name .DS_Store )"
+unrecognized_files="$(find . -type f -not \( -name '*.mp4' -o -name '*.mkv' \) -not -name .DS_Store )"
 if [ -n "$unrecognized_files" ]; then
 	echo "UNRECOGNIZED FILES:"
 	echo "$unrecognized_files"
