@@ -5,7 +5,7 @@ setopt ERR_EXIT
 local_bundle_path="$(git remote get-url local)"
 
 refs_local="$(git rev-parse --verify HEAD) HEAD"$'\n'"$(git for-each-ref --exclude 'refs/remotes/**' --format '%(objectname) %(refname)')"
-refs_bundle="$(git bundle list-heads "$local_bundle_path")"
+refs_bundle="$(test -f "$local_bundle_path" && git bundle list-heads "$local_bundle_path" || true)"
 
 if [ "$refs_local" = "$refs_bundle" ]; then
 	echo "Up-to-date: $local_bundle_path"
