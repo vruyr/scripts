@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+
+"""
+Description
+"""
+
+import sys, locale, argparse, asyncio, subprocess, re
+
+
+async def main(
+	*,
+	# Input Options
+	filepaths
+):
+	locale.setlocale(locale.LC_ALL, "")
+
+	log = asyncio.Queue()
+	printer_task = asyncio.create_task(
+		printer(queue=log, fo=sys.stdout)
+	)
+
+	filename_p = re.compile("^.*\.youtube\.(?P<videoid>[^.\s]+)\.[^\.]+$")
+
+	pending_tasks = []
+
+	videoids_to_download = []
+	for filepath in filepaths:
+		if not (m := filename_p.match(filepath)):
+			await log.put("WARNING: File name format is not recognized: {filepath!r}")
+			continue
+		videoid = m.groupdict()["videoid"]
+		res_width, res_height = await get_video_resolution(filepath)
+		if res_width >= 3840:
+			await log.put(f"{res_width}x{res_height} {videoid} DOWNLOAD: {filepath}")
+			videoids_to_download.append(videoid)
+		else:
+			await log.put(f"{res_width}x{res_height} {videoid} SKIPPING: {filepath}")
+			continue
+
+	for videoid in videoids_to_download:
+		await log.put("---")
+		await youtube_video_download(videoid)
+	await log.put("...")
+
+	await asyncio.gather(*pending_tasks)
+	current_task = asyncio.current_task()
+	all_tasks = asyncio.all_tasks()
+	assert {current_task, printer_task} == all_tasks, (current_task, all_tasks)
+
+	await log.put(None)
+	await printer_task
+
+
+async def youtube_video_download(videoid):
+	url = f"https://www.youtube.com/watch?v={videoid}"
+	p = await asyncio.create_subprocess_exec("yt-dlp", "--force-overwrites", url)
+	await p.wait()
+	assert p.returncode == 0, [p.returncode, url]
+
+
+async def get_video_resolution(filepath):
+	p = await asyncio.subprocess.create_subprocess_exec(
+		"ffprobe", "-v", "error",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=width,height",
+		"-of", "csv=s=x:p=0",
+		filepath,
+		stdout=subprocess.PIPE,
+	)
+	stdout, stderr = await p.communicate()
+	assert p.returncode == 0, p
+	resolution_str = stdout.decode("UTF-8").rstrip("\n")
+	width, sep, height = resolution_str.partition("x")
+	assert sep == "x", [resolution_str]
+	width = int(width)
+	height = int(height)
+	return (width, height)
+
+
+
+async def printer(*, queue, fo):
+	while (item := await queue.get()) is not None:
+		if isinstance(item, (list, tuple)):
+			print(*item, file=fo, sep="", end="")
+		else:
+			print(item, file=fo, sep="", end="\n")
+
+
+def parse_args(*, args, prog):
+	parser = argparse.ArgumentParser(
+		prog=prog,
+		usage="%(prog)s [OPTIONS]...",
+		description=__doc__,
+		formatter_class=argparse.RawTextHelpFormatter,
+		fromfile_prefix_chars="@",
+		add_help=False,
+	)
+
+	the_default = "\ndefault: %(default)s"
+
+	options_generic = parser.add_argument_group("Generic Options")
+	options_generic.add_argument(
+		"--help", "-h",
+		action="help",
+		help="show help message and exit",
+	)
+
+	# options_example = parser.add_argument_group("Example Options")
+	# options_example.add_argument(
+	# 	"--example", "-e", metavar="NUMBER",
+	# 	action="store", dest="example", type=int, default=None, required=True,
+	# 	help="an example option that accepts an integer" + the_default
+	# )
+
+	options_input = parser.add_argument_group("Input")
+	options_input.add_argument("filepaths", metavar="PATH", nargs="+",
+		help="video file"
+	)
+
+	opts = parser.parse_args(args)
+	return vars(opts)
+
+
+def configure_logging(opts):
+	pass
+
+
+def smain(argv=None):
+	if argv is None:
+		argv = sys.argv
+
+	try:
+		opts = parse_args(args=argv[1:], prog=argv[0])
+		configure_logging(opts)
+
+		if sys.platform == "win32":
+			asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+		return asyncio.run(
+			main(**opts),
+			debug=False,
+		)
+	except KeyboardInterrupt:
+		print(file=sys.stderr)
+
+
+if __name__ == "__main__":
+	sys.exit(smain())
