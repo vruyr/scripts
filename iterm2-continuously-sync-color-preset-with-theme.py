@@ -16,9 +16,9 @@ async def update(connection, theme):
 	parts = theme.split(" ")
 
 	if "dark" in parts:
-		color_preset_name = "Dark Background"
+		color_preset_name = "Dark"
 	else:
-		color_preset_name = "Light Background"
+		color_preset_name = "Light"
 
 	preset = await iterm2.ColorPreset.async_get(connection, color_preset_name)
 
