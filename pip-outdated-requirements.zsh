@@ -45,5 +45,7 @@ jq_script_2='
 # exit
 
 diff --color=auto -U100 \
+	--label installed \
 	<(./bin/pip freeze | sort) \
-	<(./bin/pip "${pip_args[@]}" | jq -r "$jq_script")
+	--label required \
+	<(./bin/pip "${pip_args[@]}" | jq -r "$jq_script" | sort)
