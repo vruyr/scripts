@@ -289,6 +289,8 @@ async def walk_paths(*paths, ignored_files=DEFAULT_IGNORED_FILES, ignored_dirs=D
 
 
 async def get_video_file_duration(video_file_path, *, ffprobe_path):
+	if os.path.getsize(video_file_path) == 0:
+		return 0.0
 	p = await asyncio.create_subprocess_exec(
 		ffprobe_path, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_file_path,
 		shell=False,
