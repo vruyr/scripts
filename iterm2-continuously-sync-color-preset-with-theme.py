@@ -32,6 +32,7 @@ async def update(connection, theme):
 
 
 async def main(connection):
+	print("\x1b]1;iTerm2 Color Preset Sync\a")
 	app = await iterm2.async_get_app(connection)
 	await update(connection, await app.async_get_variable("effectiveTheme"))
 	async with iterm2.VariableMonitor(connection, iterm2.VariableScopes.APP, "effectiveTheme", None) as mon:
