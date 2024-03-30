@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 
-# Dependencies: yq, gh, jq, git
+# Dependencies: yq, gh, jq, git, python3
 
 set -o ERR_EXIT
 
@@ -40,6 +40,12 @@ if [ -z "$upstream" -o "$upstream" = "null" ]; then
 	return 3
 fi
 
+if ! [[ -o extendedglob ]]; then
+	setopt -o extendedglob
+	upstream=${upstream##/#}
+	upstream=${upstream%%/#}
+	setopt +o extendedglob
+fi
 the_repo="${upstream:h2}"
 the_path="${upstream#$the_repo/}"
 
@@ -48,7 +54,11 @@ if [ -z "$the_repo" -o -z "$the_path" ]; then
 	return 4
 fi
 
-the_api_url=repos/"$the_repo"/contents/"$the_path"/"$file_name"
+function urlencode() {
+	python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$1"
+}
+
+the_api_url="$(urlencode repos/"$the_repo"/contents/"$the_path"/"$file_name")"
 
 
 file_upstream="$(gh api "$the_api_url" 2>/dev/null || true)"
@@ -60,7 +70,7 @@ fi
 
 file_sha_local="$(git hash-object -t blob "$file_path")"
 if [ "$file_sha_local" = "$file_upstream_sha" ]; then
-	printf "Up-to-date: "
+	printf 'Up-to-date\n'
 	jq <<<"$file_upstream" ".html_url" -r
 	exit 0
 fi
@@ -77,4 +87,4 @@ jq <<<0 --rawfile the_input_file "$file_path" --arg sha "$file_upstream_sha" '
 	}
 	| if ($sha | length) >= 7 then . += {sha: $sha} end
 ' - \
-	| gh api -X PUT "${gh_args[@]}" --input - --jq .commit.html_url "$the_api_url"
+	| gh api -X PUT "${gh_args[@]}" --input - --jq '"\(.commit.html_url)\n\(.content.html_url)"' "$the_api_url"
