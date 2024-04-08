@@ -4,7 +4,7 @@
 Description
 """
 
-import sys, locale, argparse, asyncio, subprocess, re
+import sys, locale, argparse, asyncio, subprocess, re, os
 
 
 async def main(
@@ -30,12 +30,14 @@ async def main(
 			continue
 		videoid = m.groupdict()["videoid"]
 		res_width, res_height = await get_video_resolution(filepath)
-		if res_width >= 3840:
-			await log.put(f"{res_width}x{res_height} {videoid} DOWNLOAD: {filepath}")
-			videoids_to_download.append(videoid)
-		else:
+		print((res_width, res_height))
+
+		if res_height == 1440:
 			await log.put(f"{res_width}x{res_height} {videoid} SKIPPING: {filepath}")
 			continue
+
+		await log.put(f"{res_width}x{res_height} {videoid} DOWNLOAD: {filepath}")
+		videoids_to_download.append(videoid)
 
 	for videoid in videoids_to_download:
 		await log.put("---")
@@ -59,6 +61,8 @@ async def youtube_video_download(videoid):
 
 
 async def get_video_resolution(filepath):
+	if os.stat(filepath).st_size == 0:
+		return (0, 0)
 	p = await asyncio.subprocess.create_subprocess_exec(
 		"ffprobe", "-v", "error",
 		"-select_streams", "v:0",
