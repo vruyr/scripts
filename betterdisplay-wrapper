@@ -1,0 +1,28 @@
+#!/usr/bin/env zsh
+
+set -o errexit
+
+hash BetterDisplay=/Applications/Caskroom/BetterDisplay.app/Contents/MacOS/BetterDisplay
+hash jq="${${:-"jqq"}:c}"
+
+for d in "${(@f)"$(BetterDisplay get -identifiers | sed 's/},{/}\n{/' | jq -s 'sort_by(.displayID)|.[]' -c)"}"; do
+	jq <<<"$d" -r '"\(.name) \(.alphanumericSerial)"'
+	dd=(
+		-vendor="$(jq -r <<<"$d" .vendor)"
+		-model="$(jq -r <<<"$d" .model)"
+		-serial="$(jq -r <<<"$d" .serial)"
+	)
+	if [ "$(jq <<<"$d" -r '"\(.vendor):\(.name)"')" = "1552:Built-in Display" ]; then
+		printf '\tBrightness        \t%s\n' "$(BetterDisplay 2>&1 "${dd[@]}" get -hardwareBrightness)"
+		printf '\tXDR Preset        \t%s\n' "$(BetterDisplay 2>&1 "${dd[@]}" get -xdrPreset)"
+	else
+		for p in luminance contrast videoGainRed videoGainGreen videoGainBlue; do
+			printf '\tDDC VCP %s\t%s/%s\n' \
+				"$p" \
+				"$(BetterDisplay 2>&1 "${dd[@]}" -ddc -vcp="$p" get -value)" \
+				"$(BetterDisplay 2>&1 "${dd[@]}" -ddc -vcp="$p" get -max)"
+		done
+		printf '\tColor Profile    \t'; BetterDisplay get "${dd[@]}" -colorProfileURL
+	fi
+	echo
+done
