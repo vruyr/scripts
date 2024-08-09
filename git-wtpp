@@ -184,25 +184,28 @@ class Git(object):
 				new_env = dict(os.environ)
 				new_env.update(env)
 				env = new_env
+			if self._cwd:
+				cmd_args.append("-C")
+				cmd_args.append(self._cwd)
 		else:
 			cmd = "ssh"
 			cmd_args = [self._host]
 			if self._user:
 				cmd_args += ["-l", self._user]
 			for k, v in (env or {}).items():
-				assert shlex.split(k) == [k], [k]
-				assert shlex.split(v) == [v], [v]
+				assert_escaped_for_shell(k)
+				assert_escaped_for_shell(v)
 				if self._is_windows:
 					assert "\"" not in k and "\"" not in v, (k, v)
 					cmd_args.append(f"set \"{k}={v}\" && ")
 				else:
 					cmd_args.append(f"{k}={v}")
 			cmd_args.extend(self._cmd)
-
-		if self._cwd:
-			assert shlex.split(self._cwd) == [self._cwd], [self._cwd]
-			cmd_args.append("-C")
-			cmd_args.append(self._cwd)
+			if self._cwd:
+				remote_cwd = self._cwd.replace(" ", "\\ ")
+				assert_escaped_for_shell(remote_cwd)
+				cmd_args.append("-C")
+				cmd_args.append(remote_cwd)
 
 		cmd_args.extend(args)
 
@@ -291,6 +294,11 @@ class Git(object):
 		m = re.match(rb"^([0-9a-fA-F]{40})\n$", b)
 		assert m, b
 		return m.groups()[0].decode("ascii")
+
+
+def assert_escaped_for_shell(x: str) -> None:
+	parts = shlex.split(x)
+	assert len(parts) == 1, [x, parts]
 
 
 async def printer(*, queue, fo):
