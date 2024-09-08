@@ -43,11 +43,13 @@ function main(...args) {
 
 	result = result.join("\n");
 
+	// Not including the final newline as `console.log` will always add one.
+
 	console.log(result);
 
 	if(params.copyToPasteboard) {
 		app.includeStandardAdditions = true;
-		app.setTheClipboardTo(result);
+		app.setTheClipboardTo(result + "\n");
 	}
 
 	return ""; // Returned value will be printed on the console by osascript
