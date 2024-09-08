@@ -5,8 +5,12 @@ trap "declare -p BASH_COMMAND; echo FAILED" ERR
 trap atexit EXIT
 
 
+atexit_rms=()
 atexit_rmdirs=()
 function atexit() {
+	for f in "${atexit_rms[@]}"; do
+		rm -- "$f"
+	done
 	for d in "${atexit_rmdirs[@]}"; do
 		RRMDIR_QUIET=1 "$selfdir/rrmdir" "$d"
 	done
@@ -103,6 +107,8 @@ unset detected_git_repo_folder
 mkdir "$lockdir_path" 2>/dev/null || {
 	exit 0
 }
+echo $$ >"$lockdir_path/pid"
+atexit_rms+=( "$lockdir_path/pid" )
 atexit_rmdirs+=( "$lockdir_path" )
 
 
