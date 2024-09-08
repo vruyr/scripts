@@ -86,7 +86,7 @@ on run argv
 end run
 """
 
-def get_pasteboard():
+def get_pasteboard() -> str:
 	return subprocess.run(["pbpaste"], stdout=subprocess.PIPE, check=True, encoding="UTF-8").stdout.strip()
 
 def match_pasteboard(p, *, wait=False):
@@ -95,7 +95,7 @@ def match_pasteboard(p, *, wait=False):
 		if not wait or m:
 			return m
 
-order_id_p = re.compile(r"(?i:Order(?: ID)?)?\s*#?\s*?(\d{3}-\d{7}-\d{7})")
+order_id_p = re.compile(r"(?i:Order(?: ID)?|Your Amazon\.com order)?\s*#?\s*?(\d{3}-\d{7}-\d{7})\b")
 transaction_p = re.compile(r"^(Visa) ending in (\d+):\s+(\w+ \d+, \d+):\s*\$([\d,]+\.\d+)$")
 
 subprocess.run(["pbcopy"], input=b"")
