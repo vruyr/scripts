@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+
+import sys
+import parsedatetime
+import tzlocal
+
+input_str = sys.argv[1]
+
+calendar = parsedatetime.Calendar()
+
+result, retcode = calendar.parseDT(input_str)
+
+if result and result.tzinfo is None:
+	result = result.replace(tzinfo=tzlocal.get_localzone())
+
+# https://bear.im/code/parsedatetime/docs/parsedatetime.Calendar-class.html#parseDT
+if retcode == 0:
+	print(input_str)
+elif retcode == 1: # parsed as C{date}
+	print(f"{result:%F}")
+elif retcode == 2: # parsed as C{time}
+	print(f"{result:%T}")
+elif retcode == 3: # parsed as C{datetime}
+	print(f"{result:%FT%T%:z}")
+else:
+	print("(unexpected result from parsedatetime)")
+
+
+#TODO Implement "? week(s) from ???"
