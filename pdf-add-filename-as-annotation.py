@@ -20,7 +20,8 @@ for fn in sys.argv[1:]:
 		subprocess.run(
 			[
 				# Imagemagick
-				"convert", "-units", "PixelsPerInch", "-density", "72",
+				"magick", "-units", "PixelsPerInch", "-density", "72",
+				# Formerly ["convert", "-units", "PixelsPerInch", "-density", "72"]
 				input_file.as_posix(),
 				output_file.as_posix(),
 			],
