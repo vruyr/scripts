@@ -35,6 +35,14 @@ def main(argv=None):
 			sys.stdout.write("\n\t")
 			sys.stdout.write(resolved_url)
 			sys.stdout.write("\n")
+		elif opts.format in ("markdown", "md"):
+			sys.stdout.write(get_url_origin(resolved_url))
+			sys.stdout.write(": [")
+			sys.stdout.write(title)
+			sys.stdout.write("](")
+			sys.stdout.write(resolved_url)
+			sys.stdout.write(")")
+			sys.stdout.write("\n")
 		elif opts.format in ("json",):
 			sys.stdout.write(json.dumps({
 				"title": title,
@@ -82,6 +90,11 @@ class TitleExtractorHtmlParser(html.parser.HTMLParser):
 		return self.__titles
 
 
+def get_url_origin(url):
+	netloc = urllib.parse.urlparse(url).netloc
+	return netloc.removeprefix("www.")
+
+
 def strip_url(url):
 	urlparts = urllib.parse.urlparse(url)
 	scheme, netloc, path, params, query, fragment = urlparts
@@ -116,9 +129,10 @@ def parse_args(argv=None):
 		choices=[
 			"simple",
 			"taskpaper", "task", "t",
+			"markdown", "md",
 			"json",
 		],
-		default="taskpaper",
+		default="markdown",
 	)
 	opts = parser.parse_args(argv[1:])
 	return opts
