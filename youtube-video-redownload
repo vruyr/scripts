@@ -5,43 +5,54 @@ Description
 """
 
 import sys, locale, argparse, asyncio, subprocess, re, os
+from typing import Any, TextIO
 
 
 async def main(
 	*,
+	# Action Options
+	check_res: bool,
+	format: None | str,
 	# Input Options
-	filepaths
-):
+	filepaths: list[str]
+) -> int:
 	locale.setlocale(locale.LC_ALL, "")
 
-	log = asyncio.Queue()
+	log: asyncio.Queue[Any] = asyncio.Queue()
 	printer_task = asyncio.create_task(
 		printer(queue=log, fo=sys.stdout)
 	)
 
-	filename_p = re.compile("^.*\.youtube\.(?P<videoid>[^.\s]+)\.[^\.]+$")
+	filename_p = re.compile(r"^.*\.youtube\.(?P<video_id>[^.\s]+)\.[^\.]+$")
 
-	pending_tasks = []
+	pending_tasks: list[asyncio.Future[None]] = []
 
-	videoids_to_download = []
+	video_ids_to_download: dict[str, str] = {}
 	for filepath in filepaths:
 		if not (m := filename_p.match(filepath)):
 			await log.put("WARNING: File name format is not recognized: {filepath!r}")
 			continue
-		videoid = m.groupdict()["videoid"]
-		res_width, res_height = await get_video_resolution(filepath)
-		print((res_width, res_height))
+		video_id: str = m.groupdict()["video_id"]
 
-		if res_height == 1440:
-			await log.put(f"{res_width}x{res_height} {videoid} SKIPPING: {filepath}")
-			continue
+		if check_res:
+			res_width, res_height = await get_video_resolution(filepath)
 
-		await log.put(f"{res_width}x{res_height} {videoid} DOWNLOAD: {filepath}")
-		videoids_to_download.append(videoid)
+			if res_height == 1440:
+				await log.put(f"{res_width}x{res_height} {video_id} SKIPPING: {filepath}")
+				continue
 
-	for videoid in videoids_to_download:
+			await log.put(f"{res_width}x{res_height} {video_id} DOWNLOAD: {filepath}")
+		else:
+			await log.put(f"REDOWNLOADING: {filepath}")
+
+		video_ids_to_download[video_id] = filepath
+
+	await log.put("---")
+	await log.put(f"Total: {len(video_ids_to_download)} files")
+
+	for video_id, filepath in video_ids_to_download.items():
 		await log.put("---")
-		await youtube_video_download(videoid)
+		await youtube_video_download(video_id, filepath, format=format, log=log)
 	await log.put("...")
 
 	await asyncio.gather(*pending_tasks)
@@ -52,15 +63,41 @@ async def main(
 	await log.put(None)
 	await printer_task
 
-
-async def youtube_video_download(videoid):
-	url = f"https://www.youtube.com/watch?v={videoid}"
-	p = await asyncio.create_subprocess_exec("yt-dlp", "--force-overwrites", url)
-	await p.wait()
-	assert p.returncode == 0, [p.returncode, url]
+	return 0
 
 
-async def get_video_resolution(filepath):
+async def youtube_video_download(video_id: str, filepath: str, *, format: None | str, log: asyncio.Queue[Any]) -> None:
+	if os.stat(filepath).st_size == 0:
+		await log.put(f"Unlinking an empty file: {filepath}")
+		os.unlink(filepath)
+	url = f"https://www.youtube.com/watch?v={video_id}"
+	format_args = ["--format", format] if format is not None else []
+	p = await asyncio.create_subprocess_exec(
+		"yt-dlp", "--force-overwrites", url,
+		"--exec", "pre_process:printf 1>&2 'url:%%s\\n' %(original_url)q",
+		"--exec", "after_move:printf 1>&2 'filepath:%%s\\n' %(filepath)q",
+		*format_args,
+		stderr=subprocess.PIPE,
+		cwd=os.path.dirname(filepath),
+	)
+	_, stderr = await p.communicate()
+	assert p.returncode == 0, [p.returncode, url, stderr]
+	reported_data: dict[str, str] = {}
+	for line in stderr.decode("utf-8").splitlines():
+		key, sep, val = line.partition(":")
+		assert sep == ":", line
+		assert len(key) and len(val), line
+		reported_data[key] = val
+	assert "filepath" in reported_data.keys(), [line, reported_data]
+	p = await asyncio.create_subprocess_exec(
+		"git", "add", filepath, reported_data["filepath"]
+	)
+	_1, _2 = await p.communicate()
+	assert p.returncode == 0, [os.getcwd(), filepath, reported_data["filepath"]]
+
+
+
+async def get_video_resolution(filepath: str) -> tuple[int, int]:
 	if os.stat(filepath).st_size == 0:
 		return (0, 0)
 	p = await asyncio.subprocess.create_subprocess_exec(
@@ -71,18 +108,16 @@ async def get_video_resolution(filepath):
 		filepath,
 		stdout=subprocess.PIPE,
 	)
-	stdout, stderr = await p.communicate()
+	stdout, unused_stderr = await p.communicate()
 	assert p.returncode == 0, p
 	resolution_str = stdout.decode("UTF-8").rstrip("\n")
 	width, sep, height = resolution_str.partition("x")
 	assert sep == "x", [resolution_str]
-	width = int(width)
-	height = int(height)
-	return (width, height)
+	return (int(width), int(height))
 
 
 
-async def printer(*, queue, fo):
+async def printer(*, queue: asyncio.Queue[Any], fo: TextIO) -> None:
 	while (item := await queue.get()) is not None:
 		if isinstance(item, (list, tuple)):
 			print(*item, file=fo, sep="", end="")
@@ -90,7 +125,7 @@ async def printer(*, queue, fo):
 			print(item, file=fo, sep="", end="\n")
 
 
-def parse_args(*, args, prog):
+def parse_args(*, args: list[str], prog: str) -> dict[str, Any]:
 	parser = argparse.ArgumentParser(
 		prog=prog,
 		usage="%(prog)s [OPTIONS]...",
@@ -109,12 +144,17 @@ def parse_args(*, args, prog):
 		help="show help message and exit",
 	)
 
-	# options_example = parser.add_argument_group("Example Options")
-	# options_example.add_argument(
-	# 	"--example", "-e", metavar="NUMBER",
-	# 	action="store", dest="example", type=int, default=None, required=True,
-	# 	help="an example option that accepts an integer" + the_default
-	# )
+	options_action = parser.add_argument_group("Action Options")
+	options_action.add_argument(
+		"--no-check-resolution", "--no-check",
+		action="store_false", dest="check_res", default=True,
+		help="proceed with downloading without checking existing video resolution" + the_default
+	)
+	options_action.add_argument(
+		"--format",
+		action="store", metavar="YTD_FORMAT_EXPR", dest="format", default=None,
+		help="passes provided value to underlying `yt-dlp` as `--format=` option"
+	)
 
 	options_input = parser.add_argument_group("Input")
 	options_input.add_argument("filepaths", metavar="PATH", nargs="+",
@@ -125,11 +165,11 @@ def parse_args(*, args, prog):
 	return vars(opts)
 
 
-def configure_logging(opts):
+def configure_logging(opts: dict[str, Any]) -> None:
 	pass
 
 
-def smain(argv=None):
+def smain(argv: list[str] | None = None) -> int:
 	if argv is None:
 		argv = sys.argv
 
@@ -146,6 +186,7 @@ def smain(argv=None):
 		)
 	except KeyboardInterrupt:
 		print(file=sys.stderr)
+		return 127
 
 
 if __name__ == "__main__":
