@@ -1,29 +1,45 @@
 #!/usr/bin/env python3
 
-import sys
+import sys, datetime
+# pip install parsedatetime==2.6
 import parsedatetime
+# pip install tzlocal==5.2
 import tzlocal
 
-input_str = sys.argv[1]
+def main():
+	input_str = sys.argv[1]
 
-calendar = parsedatetime.Calendar()
+	local_timezone = tzlocal.get_localzone()
 
-result, retcode = calendar.parseDT(input_str)
+	# Setting the reference time to last year this date and time.
+	# If the year is not specified, the resulting date will be in the past.
+	#TODO This breaks day of week based parsing.
+	reference_time = datetime.datetime.now().replace(tzinfo=local_timezone)
+	reference_time = reference_time.replace(year=(reference_time.year - 1))
 
-if result and result.tzinfo is None:
-	result = result.replace(tzinfo=tzlocal.get_localzone())
+	calendar = parsedatetime.Calendar()
 
-# https://bear.im/code/parsedatetime/docs/parsedatetime.Calendar-class.html#parseDT
-if retcode == 0:
-	print(input_str)
-elif retcode == 1: # parsed as C{date}
-	print(f"{result:%F}")
-elif retcode == 2: # parsed as C{time}
-	print(f"{result:%T}")
-elif retcode == 3: # parsed as C{datetime}
-	print(f"{result:%FT%T%:z}")
-else:
-	print("(unexpected result from parsedatetime)")
+	result, retcode = calendar.parseDT(input_str, sourceTime=reference_time)
+
+	if retcode == 0 or not result:
+		print(input_str)
+		return
+
+	if result.tzinfo is None:
+		result = result.replace(tzinfo=local_timezone)
+
+	if retcode == 1: # parsed as C{date}
+		print(f"{result:%F}")
+	elif retcode == 2: # parsed as C{time}
+		print(f"{result:%T}")
+	elif retcode == 3: # parsed as C{datetime}
+		print(f"{result:%FT%T%:z}")
+	else:
+		print("(unexpected result from parsedatetime)")
 
 
-#TODO Implement "? week(s) from ???"
+	#TODO Implement "? week(s) from ???"
+
+
+if __name__ == '__main__':
+	sys.exit(main())
