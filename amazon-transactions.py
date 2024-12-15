@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import sys, re, time, subprocess
+# pip install pyobjc
+from AppKit import NSPasteboard, NSPasteboardTypeString, NSStringPboardType
 
 
 open_amazon_order_page = """
@@ -86,32 +88,53 @@ on run argv
 end run
 """
 
-def get_pasteboard() -> str:
-	return subprocess.run(["pbpaste"], stdout=subprocess.PIPE, check=True, encoding="UTF-8").stdout.strip()
 
-def match_pasteboard(p, *, wait=False):
-	while True:
-		m = p.match(get_pasteboard())
-		if not wait or m:
-			return m
+pasteboard = NSPasteboard.generalPasteboard()
+previous = None
+amazon_order_id = None
+
+
+def get_pasteboard_content() -> str:
+	content = pasteboard.stringForType_(NSPasteboardTypeString)
+	return content
+
+def set_pasteboard_content(s):
+	global previous
+	pasteboard.clearContents()
+	pasteboard.setString_forType_(s, NSStringPboardType)
+	previous = s
+
 
 order_id_p = re.compile(r"(?i:Order(?: ID)?|Your Amazon\.com order)?\s*#?\s*?(\d{3}-\d{7}-\d{7})\b")
 transaction_p = re.compile(r"^(Visa) ending in (\d+):\s+(\w+ \d+, \d+):\s*\$([\d,]+\.\d+)$")
 
-subprocess.run(["pbcopy"], input=b"")
 
-subprocess.Popen(["afplay", "/System/Library/Sounds/Morse.aiff"])
-while True:
-	if m := match_pasteboard(order_id_p):
+def process_input_string(s):
+	global amazon_order_id
+	if m := order_id_p.match(s):
 		amazon_order_id = m.group(1)
 		print("https://www.amazon.com/gp/css/summary/print.html?orderID=" + amazon_order_id)
+		set_pasteboard_content(amazon_order_id)
 		subprocess.run(["osascript", "-e", open_amazon_order_page, amazon_order_id])
-		subprocess.run(["pbcopy"], input=b"")
 		subprocess.Popen(["afplay", "/System/Library/Sounds/Pop.aiff"])
-	elif m := match_pasteboard(transaction_p):
+	elif m := transaction_p.match(s):
 		card_type, card_num, trn_date, trn_sum = m.groups()
 		trn_date = "{:04d}-{:02d}-{:02d}".format(*time.strptime(trn_date, "%B %d, %Y")[:3])
 		result = f"{trn_date} -${trn_sum} [{card_type} {card_num}] Amazon.com - Order {amazon_order_id}.pdf"
-		subprocess.run(["pbcopy"], encoding="UTF-8", input=result)
+		set_pasteboard_content(result)
 		print(result)
 		subprocess.Popen(["afplay", "/System/Library/Sounds/Glass.aiff"])
+
+
+subprocess.Popen(["afplay", "/System/Library/Sounds/Morse.aiff"])
+previous = get_pasteboard_content()
+process_input_string(previous)
+
+while True:
+	current = get_pasteboard_content()
+	if previous == current:
+		time.sleep(0.25)
+		continue
+	previous = current
+
+	process_input_string(current)
