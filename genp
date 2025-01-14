@@ -3,10 +3,10 @@
 import argparse, shutil, string, collections
 
 
-def main(argv=None):
+def main(argv: list[str] | None =None) -> None:
 	opts = _parse_args(argv)
 
-	per_line = (opts.width + 1) // (opts.length + 1)
+	per_line: int = (opts.width + 1) // (opts.length + 1)
 	with random_generator() as fo:
 		passcodes = [genp(fo, opts.length, opts.alphabet) for i in range(opts.number)]
 	while passcodes:
@@ -24,7 +24,7 @@ def genp(fo, length, alphabet):
 	return "".join(alphabet[x % len(alphabet)] for x in fo.read(length))
 
 
-def _parse_args(argv=None):
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 	passcode_type_defaults = collections.namedtuple("passcode_type_defaults", ["alphabet", "length"])
 	passcode_types = {
 		"pin": passcode_type_defaults(
@@ -37,6 +37,10 @@ def _parse_args(argv=None):
 		),
 		"punctuation": passcode_type_defaults(
 			alphabet=string.punctuation.encode("ascii").translate(None, b"'\"").decode("ascii"),
+			length=32,
+		),
+		"passwordwithpunctuation": passcode_type_defaults(
+			alphabet=(string.ascii_lowercase + string.ascii_uppercase + string.digits + string.punctuation.encode("ascii").translate(None, b"'\"").decode("ascii")),
 			length=32,
 		),
 		"hex": passcode_type_defaults(
