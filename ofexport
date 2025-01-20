@@ -121,21 +121,20 @@ function taskToObsidianText(task) {
 	let modificationDate = dateToStr(task.modificationDate());
 	let note = task.note().trim();
 
-	if(/^https?:\/\/\S+$/.test(note)) {
-		taskName = `[${taskName}](${note})`;
-		note = "";
-	}
+	line(0, `(date::${creationDate})`);
+	line(0, "");
 
-	let mainLine = `- ${taskName}`;
-	mainLine += ` [added::${creationDate}]`;
+	let mainLine = `${taskName}`;
 	if(modificationDate !== creationDate) {
-		mainLine += `\t[modified::${modificationDate}]`;
+		mainLine += `  [modified::${modificationDate}]`;
 	}
-
 	line(0, mainLine);
 
 	if(note) {
-		line(0, note.split("\n").map(x => "\t" + x).join("\n"));
+		if(!/^https?:\/\/\S+$/.test(note)) {
+			line(0, "");
+		}
+		line(0, note);
 	}
 
 	var indentWidth = 4;
