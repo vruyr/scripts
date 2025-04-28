@@ -135,7 +135,8 @@ if [ -z "$finish_existing" ]; then
 		getpocket_list_args=( -x "$getpocket_tag_videos_not" )
 	fi
 	declare -a urls=(
-		$("$getpocket_path" "${getpocket_extra_args[@]}" list "$@" $(printf " -d %q" "${supported_domains[@]}") "${getpocket_list_args[@]}" --format $'{resolved_url}\n')
+		# shellcheck disable=SC2207
+		$("$getpocket_path" "${getpocket_extra_args[@]}" list "$@" $(printf " -d %q" "${supported_domains[@]}") "${getpocket_list_args[@]}" --format $'{resolved_url}\t{resolved_title}\n' | tee /dev/stderr | cut -d $'\t' -f 1)
 	)
 	if [ "${#urls[@]}" -gt 0 ]; then
 		is_dirty="$(this_git status --porcelain=v2)"
