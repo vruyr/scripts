@@ -9,8 +9,8 @@ CONFIG_DIR = pathlib.Path.home() / ".config" / pathlib.Path(__file__).stem
 def main(
 	*,
 	# Example Options
-	show_all_mailboxes
-):
+	show_all_mailboxes: bool
+) -> None:
 	locale.setlocale(locale.LC_ALL, "")
 
 	if show_all_mailboxes:
