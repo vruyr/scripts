@@ -16,9 +16,11 @@ Options:
 	--ignore, -i REGEX          Exclude paths that match the regex pattern from calculations.
 	--date-regex, -d REGEX      Regex pattern for full file name without path to extract date. [default: ]
 	--paths-from-stdin          Do not walk the filesystem, instead use paths from standard input one path per line.
+	--json-output               Instead of printing a human readable output in stdout, produce a json output and produce regular one on stderr.
 """
 
 import sys, locale, asyncio, subprocess, os, collections, re, itertools, pathlib, json
+from typing import List, Any
 # pip install docopt==0.6.2
 import docopt
 
@@ -27,7 +29,7 @@ CACHE_DIR = pathlib.Path.home() / ".cache"
 CACHE_FILE = CACHE_DIR / pathlib.Path(__file__).stem
 
 
-async def main(*, args, prog):
+async def main(*, args: List[str], prog: str) -> int:
 	locale.setlocale(locale.LC_ALL, "")
 
 	params = docopt.docopt(
@@ -48,16 +50,18 @@ async def main(*, args, prog):
 	if not date_regex:
 		date_regex = [r"(?P<date>\d{8}).*", r".*\.(?P<date>\d{8})\.youtube\..*"]
 	paths_from_stdin = params.pop("--paths-from-stdin")
+	json_output = params.pop("--json-output")
 	assert not cache_path, "--cache-path is not implemented"
 	assert not params, params
 
 	if chdir_path is not None:
 		os.chdir(chdir_path)
 
-	log = asyncio.Queue()
+	log: asyncio.Queue = asyncio.Queue()
 	pending_tasks = []
+	human_output = sys.stdout if not json_output else sys.stderr
 	printer_task = asyncio.ensure_future(
-		printer(queue=log, fo=sys.stdout)
+		printer(queue=log, fo=human_output)
 	)
 
 	if not paths:
@@ -66,14 +70,14 @@ async def main(*, args, prog):
 	pending_durations = asyncio.Queue()
 
 	class PathDuration(object):
-		def __init__(self, path):
+		def __init__(self, path: pathlib.PurePath):
 			self.path = path
 			self.duration = 0
 			self.count = 0
 			self.remaining = 0
 			self.unique_days = set()
 
-		def format(self, widths):
+		def format(self, widths: List[int]) -> str:
 			while len(widths) < 2:
 				widths.append(0)
 			duration = format_seconds(self.duration, speed=playback_rate).lstrip()
@@ -88,7 +92,7 @@ async def main(*, args, prog):
 	path_durations = collections.OrderedDict()
 	files_failed = collections.OrderedDict()
 
-	async def duration_consumer(*, isatty):
+	async def duration_consumer(*, isatty: bool) -> None:
 		nonlocal path_durations, files_failed
 		if isatty:
 			await log.put("\n")
@@ -156,6 +160,18 @@ async def main(*, args, prog):
 		total.unique_days = set(itertools.chain(*(d.unique_days for d in path_durations.values())))
 		await log.put("\n" + total.format(widths=widths))
 
+		if json_output:
+			json.dump(
+				{
+					"total": {
+						"duration": total.duration,
+						"count": total.count,
+					},
+				},
+				sys.stdout
+			)
+			sys.stdout.write("\n")
+
 		if num_empty_files:
 			await log.put(f"\nEmpty files: {num_empty_files:n}\n")
 
@@ -168,7 +184,7 @@ async def main(*, args, prog):
 	pending_tasks.append(
 		asyncio.ensure_future(duration_consumer(isatty=sys.stdout.isatty()))
 	)
-	pending_paths = asyncio.Queue()
+	pending_paths: asyncio.Queue = asyncio.Queue()
 	pending_tasks.append(
 		asyncio.ensure_future(path_consumer(
 			queue_in=pending_paths,
@@ -196,6 +212,8 @@ async def main(*, args, prog):
 
 	await log.put(None)
 	await printer_task
+
+	return 0
 
 
 async def path_consumer(*, queue_in, queue_out, max_parallel, ffprobe_path):
