@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys, urllib.parse, imaplib, ssl, getpass, hmac, email, email.policy, shlex, subprocess, re, json
+from typing import Any
 # pip install IMAPClient==2.2.0
 from imapclient import imap_utf7
 
@@ -9,7 +10,7 @@ from imapclient import imap_utf7
 verbosity=None
 
 
-def main(opts):
+def main(opts: Any) -> None:
 	global verbosity
 	verbosity = opts.verbosity
 
