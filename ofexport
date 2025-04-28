@@ -137,6 +137,8 @@ function taskToObsidianText(task) {
 		line(0, note);
 	}
 
+	line(0, "");
+
 	var indentWidth = 4;
 	result = result.map(function(args) {
 		return " ".repeat(indentWidth * args[0]) + args[1];
