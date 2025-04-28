@@ -2,8 +2,8 @@
 
 set -o errexit
 
-hash BetterDisplay=/Applications/Caskroom/BetterDisplay.app/Contents/MacOS/BetterDisplay
-hash jq="${${:-"jqq"}:c}"
+hash BetterDisplay="$(osascript -e 'tell application "System Events" to return POSIX path of application file of first process whose bundle identifier is "pro.betterdisplay.BetterDisplay"')/Contents/MacOS/BetterDisplay"
+hash jq="${${:-"jq"}:c}"
 
 for param in -autoBrightness -nightShift -trueTone; do
 	printf '%s %s\n' "$param" "$(BetterDisplay 2>&1 get "$param")"
@@ -44,10 +44,10 @@ for display in "${(@f)"$(BetterDisplay get -identifiers | sed 's/},{/}\n{/' | jq
 		done
 		for vcp in luminance contrast videoGainRed videoGainGreen videoGainBlue; do
 			params=(-ddc -vcp="$vcp")
-			printf '  %-30s -max=%s -value=%s\n' \
+			printf '  %-30s -value=%s -max=%s\n' \
 				"${(j: :)params[@]}" \
-				"$(BetterDisplay 2>&1 "${display_selector[@]}" "${params[@]}" get -max)" \
-				"$(BetterDisplay 2>&1 "${display_selector[@]}" "${params[@]}" get -value)"
+				"$(BetterDisplay 2>&1 "${display_selector[@]}" "${params[@]}" get -value)" \
+				"$(BetterDisplay 2>&1 "${display_selector[@]}" "${params[@]}" get -max)"
 		done
 	fi
 	echo
