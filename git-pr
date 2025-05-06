@@ -5,37 +5,38 @@ trap "declare -p BASH_COMMAND; echo FAILED" ERR
 
 
 pr_num="$1"; shift
-worktree_root_dir="$HOME/Downloads"
-worktree_path="${worktree_root_dir}/$(basename "$(git rev-parse --show-toplevel)")-pr-$pr_num"
 
 IFS=$'\t' read pr_url base_url base_label base_sha head_label head_sha < <( \
 	gh api "repos/:owner/:repo/pulls/$pr_num" \
 	--jq '.html_url + "\t" + .base.repo.clone_url + "\t" + .base.label + "\t" + .base.sha + "\t" + .head.label + "\t" + .head.sha' \
 )
 
-#TODO:vruyr Create branches pr/1000/base -> origin/main, pr/1000/review -> pr/1000/base, pr/1000/head -> pr/1000/review.
 #TODO:vruyr Set HEAD branch pr/1000/review instead of detaching it.
 #TODO:vruyr Print instructions on how to update the PR branches.
 
-git worktree add --detach "$worktree_path"
+#TODO:vruyr Instead of using $base_sha for the review branch, use the last review point, if any and increment the number.
+echo git fetch "$base_url" \
+	"$base_sha:refs/heads/pr/${pr_num}/base" \
+	"$base_sha:refs/heads/pr/${pr_num}/review1" \
+	"$head_sha:refs/heads/pr/${pr_num}/head"
 
-git -C "$worktree_path" fetch "$base_url" "$base_sha:refs/worktree/pr-base" "$head_sha:refs/worktree/pr-head"
-git -C "$worktree_path" switch --detach --discard-changes --recurse-submodules refs/worktree/pr-base
-git -C "$worktree_path" restore --worktree --source refs/worktree/pr-head -- .
+#TODO:vruyr Deduce the ${remote_name} using ${base_label}.
+# git branch "pr/${pr_num}/base"     --set-upstream-to="remotes/${remote_name}/${base_label#*:}"
+echo git branch "pr/${pr_num}/head"     --set-upstream-to="pr/${pr_num}/base"
+echo git branch "pr/${pr_num}/review1"  --set-upstream-to="pr/${pr_num}/head"
+
+printf '!!! MAKE SURE THERE ARE NO LOCAL MODIFICATIONS !!!\n'
+echo git switch --discard-changes --recurse-submodules "pr/${pr_num}/review1"
+echo git restore --worktree --source "pr/${pr_num}/head" -- .
 
 printf '\n\n'
 printf 'Pull Request URL: %s\n' "$pr_url"
-printf 'Working Copy: %s\n' "$worktree_path"
 printf '\n'
 
 gh pr checks "$pr_num" || true
 
-code "$worktree_path" || true
-smerge "$worktree_path" || true
-
-
 printf '\n\n'
 printf 'Stage all changes that look good and run:'
 printf '\n'
-printf '    git -C %q reset --soft refs/worktree/pr-head\n' "$worktree_path"
+printf '    git reset --soft %q\n' "pr/${pr_num}/head"
 printf '\n\n'
