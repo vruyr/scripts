@@ -48,7 +48,7 @@ def main(*, args, prog):
 		sys.stdout.write(compose(the_json))
 
 
-def decompose(the_url):
+def decompose(the_url: str):
 	scheme, netloc, path, params, query, fragment = urllib.parse.urlparse(the_url)
 	path = urllib.parse.unquote(path, errors="strict")
 	if query:
@@ -72,7 +72,7 @@ def decompose(the_url):
 	)
 
 
-def compose(the_json):
+def compose(the_json: str):
 	the_json = json.loads(
 		the_json,
 		object_pairs_hook=collections.OrderedDict
@@ -81,7 +81,7 @@ def compose(the_json):
 	netloc   = the_json.pop("netloc")
 	path     = urllib.parse.quote(the_json.pop("path"))
 	params   = the_json.pop("params")
-	query    = the_json.pop("query")
+	query    = tuple((k, v) for k, v in the_json.pop("query"))
 	fragment = the_json.pop("fragment")
 	assert not the_json
 	query = urllib.parse.urlencode(
