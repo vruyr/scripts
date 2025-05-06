@@ -101,26 +101,34 @@ function main() {
 		esac
 	done
 
-	brew_path="$(which brew)"
-	case "$brew_path" in
-		"/opt/homebrew/bin/brew")
-			brew_path_pretty="brew"
-			;;
-		*)
-			brew_path_pretty="$(cd "$(dirname "$brew_path")" && dirs +0)/$(basename "$brew_path")"
-			;;
-	esac
-
+	homebrew_enabled=
 	if [ "$homebrew_bundle_check" ] || [ "$homebrew_outdated" ] || [ "$homebrew_cask_outdated" ] || [ "$homebrew_bundle_cleanup" ]; then
-		echo "--- $brew_path_pretty update"
-		local o
-		o="$("$brew_path" update)"
-		if [ -n "$o" ] && [ "$o" != "Already up-to-date." ]; then
-			echo "$o" | indent
-		fi
-		eval_indent ''
+		homebrew_enabled=1
+		brew_path="$(which 2>/dev/null brew)"
+		case "$brew_path" in
+			"/opt/homebrew/bin/brew")
+				brew_path_pretty="brew"
+				;;
+			*)
+				brew_path_pretty="$(cd "$(dirname "$brew_path")" && dirs +0)/$(basename "$brew_path")"
+				;;
+		esac
 	fi
-	if [ "$homebrew_bundle_check" ]; then
+
+	if [ "$homebrew_enabled" ]; then
+		if [ "$brew_path" ]; then
+			echo "--- $brew_path_pretty update"
+			local o
+			o="$("$brew_path" update)"
+			if [ -n "$o" ] && [ "$o" != "Already up-to-date." ]; then
+				echo "$o" | indent
+			fi
+			eval_indent ''
+		else
+			echo "--- brew - NOT AVAILABLE"
+		fi
+	fi
+	if [ "$brew_path" ] && [ "$homebrew_bundle_check" ]; then
 		echo "--- $brew_path_pretty bundle check"
 		local o
 		o="$("$brew_path" bundle check --verbose --file="$BREW_BUNDLE_FILE_DIR/Brewfile")"
@@ -128,17 +136,17 @@ function main() {
 			echo "$o" | indent
 		fi
 	fi
-	if [ "$homebrew_outdated" ]; then
+	if [ "$brew_path" ] && [ "$homebrew_outdated" ]; then
 		# Upgrade all: brew upgrade --formula
 		echo "--- $brew_path_pretty outdated --formula"
 		eval_indent '"$brew_path" outdated --formula --verbose'
 	fi
-	if [ "$homebrew_cask_outdated" ]; then
+	if [ "$brew_path" ] && [ "$homebrew_cask_outdated" ]; then
 		# Upgrade all: brew upgrade --cask --greedy
 		echo "--- $brew_path_pretty outdated --cask"
 		eval_indent show_outdated_casks
 	fi
-	if [ "$homebrew_bundle_cleanup" ]; then
+	if [ "$brew_path" ] && [ "$homebrew_bundle_cleanup" ]; then
 		echo "--- $brew_path_pretty bundle cleanup"
 		#TODO The `brew bundle cleanup` has a bug where it doesn't recognize formulae from "core" tap spelled out with their fully-qualified names (e.g. homebrew/core/tmux).
 		patched_brewfile_content="$(cat "$BREW_BUNDLE_FILE_DIR"/Brewfile "$BREW_BUNDLE_FILE_DIR"/Brewfile.* | sed -e 's|^brew "homebrew/core/|brew "|')"
@@ -175,17 +183,23 @@ function main() {
 		fi
 	fi
 	if [ "$macossystem_outdated" ]; then
-		echo "--- softwareupdate --list"
-		local o
-		o="$(softwareupdate --list 2>&1)"
-		if [ -n "$o" ] && [ "$o" != $'No new software available.\nSoftware Update Tool\n\nFinding available software' ]; then
-			echo "$o" | indent
+		if type >/dev/null 2>&1 softwareupdate; then
+			echo "--- softwareupdate --list"
+			local o
+			o="$(softwareupdate --list 2>&1)"
+			if [ -n "$o" ] && [ "$o" != $'No new software available.\nSoftware Update Tool\n\nFinding available software' ]; then
+				echo "$o" | indent
+			fi
+		else
+			echo "--- softwareupdate - NOT AVAILABLE"
 		fi
 	fi
 	echo ...
 }
 
 function show_outdated_casks() {
+	[ "$brew_path" ] || return
+
 	outdated_casks_json="$("$brew_path" outdated --cask --greedy --json)"
 
 	# "$brew_path" outdated --cask --verbose --greedy
@@ -209,6 +223,9 @@ function format_brew_outdated_cask_json() {
 }
 
 function show_running_apps_from_brew_outdated_cask_json() {
+	[ "$brew_path" ] || return
+
+
 	outdated_cask_app_bundle_paths="$(
 		jq --raw-output0 '.casks[]|.name' | \
 		xargs -r0 "$brew_path" info --json=v2 --cask | \
