@@ -17,11 +17,11 @@ try:
 				for f in subprocess.check_output(["pkgutil", "--volume", volume, "--pkg-info", pkg_id], encoding="UTF-8").splitlines():
 					key, value = f.split(": ")
 					pinfo[key] = value
-				pinfo["install-time"] = datetime.datetime.fromtimestamp(int(pinfo["install-time"]))
+				pinfo["install-time"] = datetime.datetime.fromtimestamp(int(pinfo["install-time"])).astimezone()
 				packages.append(pinfo)
 
 		for p in sorted(packages, key=lambda p: p["install-time"]):
-			print("{install-time} {package-id:60} {version:30} {volume:13} {location}".format(**p))
+			print("{install-time:%Y-%m-%dT%H:%M:%S%z} {package-id:60} {version:30} {volume:13} {location}".format(**p))
 
 		sys.exit(0)
 
