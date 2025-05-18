@@ -134,7 +134,7 @@ function main() {
 	rm_if_sha1_matches da39a3ee5e6b4b0d3255bfef95601890afd80709 "$gitdir/config"
 
 	if [ "$gitdir" != "." ]; then
-		rmdir "$gitdir"
+		rmdir "$gitdir" || true
 	fi
 
 	tree -FACa
@@ -173,7 +173,7 @@ function rm_if_sha1_matches() {
 	if [ -z "$oldsha1" -o ! -e "$filepath" ]; then
 		return 0
 	fi
-	local newsha1="$(cat "$filepath" | openssl dgst -sha1)"
+	local newsha1="$(cat "$filepath" | openssl dgst -sha1 -binary | xxd -p)"
 	if [ -n "$newsha1" -a "$newsha1" == "$oldsha1" ]; then
 		rm_if_exists "$filepath"
 	fi
