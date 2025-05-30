@@ -126,7 +126,7 @@ function incoming() {
 
 		git fetch --prune -q "$r"
 		read -r -a exclude_local_refs < <(
-			git for-each-ref --format '^%(objectname) %(refname)' | grep -v ' refs/remotes/' | cut -b-41
+			git for-each-ref --format '^%(objectname)' --exclude 'refs/remotes/**'
 		)
 
 		any_new_tags="$(git fetch --prune --prune-tags --tags --dry-run "$r" 2>&1 | sed $'s/^/\t\t/')"
