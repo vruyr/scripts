@@ -46,7 +46,7 @@ func main() async {
 			print("\(outputPrefix)\(pasteboardContent)")
 			do {
 				let exitCode = try await runCommand(
-					"/Users/vruyr/.bin/python/venv/getpocket-cpython-3.10.0/bin/yt-dlp",
+					"/Users/vruyr/.bin/local-scripts/yt-dlp",
 					arguments: [
 						"--simulate",
 						pasteboardContent
