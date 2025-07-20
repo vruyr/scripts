@@ -1,38 +1,83 @@
 #!/usr/bin/env zsh
 
-vscode_process_applescript='
-	tell application "System Events"
-		return POSIX path of application file of first process whose bundle identifier is "com.microsoft.vscode"
-	end tell
-'
-
 fzf_args=(
 	--wrap --reverse --exit-0
-	--header="VS Code does not seem to be running. Select which one to launch: "
 	--header-first
+	--header="Select which one to use:"
 	--height 40%
 	--min-height 18+
+	--delimiter $'\t'
+	--with-nth 1,2
 	--preview='
-		mdls -name kMDItemDisplayName -name kMDItemVersion {} ;
+		mdls -name kMDItemDisplayName -name kMDItemVersion {2} ;
 		echo --- ;
-		codesign --display --verbose=2 --check-notarization {} ;
+		codesign --display --verbose=2 --check-notarization {2} ;
 	'
 	--preview-window='right,50%'
 )
 
-if ! vscode_bundle_path="$(osascript 2>/dev/null -e "$vscode_process_applescript")"; then
-	vscode_bundle_path="$(
-		mdfind 'kMDItemCFBundleIdentifier == "com.microsoft.vscode"c' \
-		| fzf "${fzf_args[@]}"
-	)"
+vscode_app_bundles="$(osascript -e "$(cat <<EOT
+tell application "System Events"
+	set targetBundleIDs to {"com.microsoft.vscode", "com.vscodium"}
+
+	set foundAppBundles to {}
+	set theResult to {}
+	repeat with bundleID in targetBundleIDs
+		try
+			repeat with proc in (every process whose bundle identifier is bundleID)
+				set appBundlePath to POSIX path of application file of proc
+				set end of theResult to "PID:" & unix id of proc & tab & appBundlePath
+				set end of foundAppBundles to appBundlePath
+			end repeat
+		on error
+			-- Nothing to do
+		end try
+	end repeat
+
+	repeat with bundleID in targetBundleIDs
+		try
+			set query to "kMDItemCFBundleIdentifier ==" & quoted form of bundleID & "c"
+			set mdfindOutput to do shell script "mdfind " & quoted form of query
+			set mdfindOutputLines to paragraphs of mdfindOutput
+			repeat with aLine in mdfindOutputLines
+				if foundAppBundles does not contain aLine then
+					set end of theResult to "Not Running" & tab & aLine
+				end if
+			end repeat
+		on error
+			-- Nothing to do
+		end try
+	end repeat
+
+	set AppleScript's text item delimiters to linefeed
+	set pathsString to theResult as text
+	set AppleScript's text item delimiters to ""
+	return pathsString
+end tell
+EOT
+)")"
+
+vscode_app_bundle=""
+fzf_exit_code=1
+if [[ -n "$vscode_app_bundles" ]]; then
+	vscode_app_bundle="$(fzf < <(echo "$vscode_app_bundles") "${fzf_args[@]}")"
 	fzf_exit_code=$?
-	if [[ "$fzf_exit_code" -eq 130 ]]; then
-		# Interrupted with Ctrl-C or Esc
-		exit 130
-	elif [[ "$fzf_exit_code" -ne 0 ]] || ! [[ -d "$vscode_bundle_path" ]]; then
-		echo "Failed to find VS Code." 1>&2
-		exit 127
-	fi
+fi
+vscode_app_bundle_path="${vscode_app_bundle#*$'\t'}"
+
+if [[ "$fzf_exit_code" -eq 130 ]]; then
+	# Interrupted with Ctrl-C or Esc
+	exit 130
+elif [[ "$fzf_exit_code" -ne 0 ]] || ! [[ -d "$vscode_app_bundle_path" ]]; then
+	echo "Failed to an app bundle." 1>&2
+	exit 127
 fi
 
-exec "$vscode_bundle_path/Contents/Resources/app/bin/code" "$@"
+
+vscode_exec_path="$(
+	print -l "$vscode_app_bundle_path/Contents/Resources/app/bin"/* \
+	| grep -e '/code$' -e '/codium$' \
+	| head -n1
+)"
+
+exec "$vscode_exec_path" "$@"
