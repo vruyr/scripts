@@ -4,12 +4,6 @@ import Foundation
 import AppKit
 
 
-struct CliOptions {
-	var commandToExec: [String]
-	var numLinesToShow: UInt = 5
-}
-
-
 func main(options: CliOptions) async {
 	signal(SIGINT) { signal in
 		print("\nBye...")
@@ -96,7 +90,7 @@ func resolveCommand(_ command: String) -> URL {
 		let fileURL = URL(fileURLWithPath: command)
 		if !isExecutableFile(atPath: fileURL.path) {
 			print("ERROR: The path \(String(reflecting: command)) is not executable file.")
-			exit(2)
+			exit(3)
 		}
 		return fileURL
 	}
@@ -112,7 +106,7 @@ func resolveCommand(_ command: String) -> URL {
 	}
 
 	print("ERROR: An executable \(String(reflecting: command)) was not found in PATH.")
-	exit(3)
+	exit(4)
 }
 
 
@@ -154,6 +148,13 @@ func runCommand(_ command: URL, arguments: [String], prefix: String, numLinesToS
 
 	return process.terminationStatus
 }
+
+
+struct CliOptions {
+	var commandToExec: [String]
+	var numLinesToShow: UInt = 5
+}
+
 
 func parseArguments(_ args: [String]) -> CliOptions {
 	var options: CliOptions = CliOptions(commandToExec: [])
@@ -214,7 +215,7 @@ func parseArguments(_ args: [String]) -> CliOptions {
 			After the -- separator, you can specify an external command and its arguments.
 			""")
 			exit(0)
-		} else if ["l", "--lines-to-show"].contains(key) {
+		} else if ["l", "lines-to-show"].contains(key) {
 			// Handle lines to show option
 			if let numLinesToShow = UInt(value) {
 				options.numLinesToShow = numLinesToShow
@@ -226,6 +227,12 @@ func parseArguments(_ args: [String]) -> CliOptions {
 			print("Unknown option: \(key)")
 			exit(1)
 		}
+
+	}
+
+	if options.commandToExec.isEmpty {
+		print("ERROR: No command specified after options. Please provide a command to execute.")
+		exit(2)
 	}
 
 	return options
