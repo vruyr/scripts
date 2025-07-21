@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+
+"""
+Description
+"""
+
+import sys, locale, argparse, asyncio, pathlib, json, os
+# aiohttp==3.12.14
+import aiohttp
+
+
+CONFIG_DIR = pathlib.Path.home() / ".config" / "readwisereader"
+
+
+async def main(
+	*,
+	# Input Data
+	urls, tags, notes, location
+):
+	locale.setlocale(locale.LC_ALL, "")
+
+	with (CONFIG_DIR / "auth.json").open("r") as fo:
+		auth = json.load(fo)
+	access_token = auth["access_token"]
+
+	async with ReadwiseReaderClient(access_token=access_token) as client:
+		for url in urls:
+			# Save each URL with the provided tags and notes
+			result = await client.save(
+				url=url,
+				tags=tags,
+				notes="\n".join(notes or []),
+				location=location,
+			)
+			print(ansi_hyperlink(text=result["id"], url=result["url"]), url)
+
+
+def ansi_hyperlink(*, text, url):
+	return f"\x1b]8;;{url}\x07{text}\x1b]8;;\x07"
+
+
+class ReadwiseReaderClient:
+	# https://readwise.io/reader_api
+	DOC_CREATE_URL = "https://readwise.io/api/v3/save/"
+	DOC_LIST_URL = "https://readwise.io/api/v3/list/"
+	# DOC_UPDATE_URL = "https://readwise.io/api/v3/update/<document_id>/"
+	# DOC_DELETE_URL = "https://readwise.io/api/v3/delete/<document_id>/"
+	TAG_LIST_URL = "https://readwise.io/api/v3/tags/"
+
+	__slots__ = (
+		"access_token",
+		"session",
+	)
+
+	def __init__(self, *, access_token):
+		self.access_token = access_token
+		self.session = None
+
+	async def __aenter__(self):
+		self.session = await aiohttp.ClientSession().__aenter__()
+		return self
+
+	async def __aexit__(self, exc_type, exc, tb):
+		if self.session:
+			await self.session.__aexit__(exc_type, exc, tb)
+			self.session = None
+
+	async def save(self, *,
+		url,
+		tags: list[str] = None,
+		notes: str = None,
+		location: str = None
+	):
+		"""
+		Save a URL to Readwise Reader.
+		"""
+
+		if not self.session:
+			raise RuntimeError("Not initialized. Use `async with`.")
+
+		headers = {
+			"Authorization": f"Token {self.access_token}",
+			"Content-Type": "application/json"
+		}
+
+		data = {
+			"url": url
+		}
+
+		if tags is not None and len(tags) > 0:
+			data["tags"] = list(tags)
+
+		if notes:
+			data["notes"] = notes
+
+		if location:
+			data["location"] = location
+
+		async with self.session.post(
+			self.DOC_CREATE_URL,
+			headers=headers,
+			data=json.dumps(data),
+		) as response:
+			response.raise_for_status()
+			#TODO: If the response.status != 201 (200 == already exists), make sure to update the note as it will stay the old value.
+			return await response.json()
+
+	async def fetchTags(self):
+		"""
+		Retrieve the list of tags from Readwise Reader.
+		"""
+
+		if not self.session:
+			raise RuntimeError("Not initialized. Use `async with`.")
+
+		headers = {
+			"Authorization": f"Token {self.access_token}",
+			"Content-Type": "application/json"
+		}
+
+		async with self.session.get(
+			self.TAG_LIST_URL,
+			headers=headers,
+		) as response:
+			response.raise_for_status()
+			return await response.json()
+
+
+def parse_args(*, args, prog):
+	parser = argparse.ArgumentParser(
+		prog=prog,
+		usage="%(prog)s [OPTIONS]...",
+		description=__doc__,
+		formatter_class=argparse.RawTextHelpFormatter,
+		fromfile_prefix_chars="@",
+		add_help=False,
+	)
+
+	the_default = "\ndefault: %(default)s"
+
+	options_generic = parser.add_argument_group("Generic Options")
+	options_generic.add_argument(
+		"--help", "-h",
+		action="help",
+		help="show help message and exit",
+	)
+
+	options_data = parser.add_argument_group("Input Data Options")
+	options_data.add_argument(
+		"urls", metavar="URL",
+		type=str, nargs="+",
+		help="URLs to save"
+	)
+	options_data.add_argument(
+		"--tag", "-t", metavar="TAG",
+		dest="tags", action="append", type=str, default=None,
+		help="Tag to apply to the URLs",
+	)
+	options_data.add_argument(
+		"--notes", "-n", metavar="TEXT",
+		dest="notes", action="append", type=str, default=None,
+		help="Notes to add to the URLs",
+	)
+	options_data.add_argument(
+		"--location", "-l",
+		dest="location", choices=["new", "later", "archive", "feed"],
+		default=None,
+		help="Where to save the URLs",
+	)
+
+	opts = parser.parse_args(args)
+	return vars(opts)
+
+
+def smain(argv=None):
+	if argv is None:
+		argv = sys.argv
+
+	try:
+		opts = parse_args(args=argv[1:], prog=argv[0])
+
+		return asyncio.run(
+			main(**opts),
+			debug=False,
+		)
+	except KeyboardInterrupt:
+		print(file=sys.stderr)
+
+
+if __name__ == "__main__":
+	sys.exit(smain())
