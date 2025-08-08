@@ -2,10 +2,13 @@
 
 fzf_args=(
 	--wrap --reverse --exit-0
+	--select-1
+
 	--header-first
 	--header="Select which one to use:"
 	--height 40%
 	--min-height 18+
+
 	--delimiter $'\t'
 	--with-nth 1,2
 	--preview='
@@ -16,46 +19,65 @@ fzf_args=(
 	--preview-window='right,50%'
 )
 
+declare -A name_to_bundle_id_map
+name_to_bundle_id_map=(
+	code    "com.microsoft.vscode"
+	codium  "com.vscodium"
+)
+
+declare -A bundle_id_to_name_map
+for name in ${(k)name_to_bundle_id_map}; do
+	bundle_id_to_name_map[${(L)name_to_bundle_id_map[$name]}]="$name"
+done
+
+targetBundleIDs=( ${name_to_bundle_id_map[${0:t}]} )
+if [[ ${#targetBundleIDs[@]} -eq 0 ]]; then
+	targetBundleIDs=( ${(v)name_to_bundle_id_map} )
+fi
+
 vscode_app_bundles="$(osascript -e "$(cat <<EOT
-tell application "System Events"
-	set targetBundleIDs to {"com.microsoft.vscode", "com.vscodium"}
+on run argv
+	set targetBundleIDs to argv
 
-	set foundAppBundles to {}
-	set theResult to {}
-	repeat with bundleID in targetBundleIDs
-		try
-			repeat with proc in (every process whose bundle identifier is bundleID)
-				set appBundlePath to POSIX path of application file of proc
-				set end of theResult to "PID:" & unix id of proc & tab & appBundlePath
-				set end of foundAppBundles to appBundlePath
-			end repeat
-		on error
-			-- Nothing to do
-		end try
-	end repeat
+	tell application "System Events"
 
-	repeat with bundleID in targetBundleIDs
-		try
-			set query to "kMDItemCFBundleIdentifier ==" & quoted form of bundleID & "c"
-			set mdfindOutput to do shell script "mdfind " & quoted form of query
-			set mdfindOutputLines to paragraphs of mdfindOutput
-			repeat with aLine in mdfindOutputLines
-				if foundAppBundles does not contain aLine then
-					set end of theResult to "Not Running" & tab & aLine
-				end if
-			end repeat
-		on error
-			-- Nothing to do
-		end try
-	end repeat
+		set foundAppBundles to {}
+		set theResult to {}
+		repeat with bundleID in targetBundleIDs
+			try
+				repeat with proc in (every process whose bundle identifier is bundleID)
+					set appBundlePath to POSIX path of application file of proc
+					set end of theResult to "PID:" & unix id of proc & tab & appBundlePath
+					set end of foundAppBundles to appBundlePath
+				end repeat
+			on error
+				-- Nothing to do
+			end try
+		end repeat
 
-	set AppleScript's text item delimiters to linefeed
-	set pathsString to theResult as text
-	set AppleScript's text item delimiters to ""
-	return pathsString
-end tell
+		repeat with bundleID in targetBundleIDs
+			try
+				set query to "kMDItemCFBundleIdentifier ==" & quoted form of bundleID & "c"
+				set mdfindOutput to do shell script "mdfind " & quoted form of query
+				set mdfindOutputLines to paragraphs of mdfindOutput
+				repeat with aLine in mdfindOutputLines
+					if foundAppBundles does not contain aLine then
+						set end of theResult to "Not Running" & tab & aLine
+					end if
+				end repeat
+			on error
+				-- Nothing to do
+			end try
+		end repeat
+
+		set AppleScript's text item delimiters to linefeed
+		set pathsString to theResult as text
+		set AppleScript's text item delimiters to ""
+		return pathsString
+	end tell
+end run
 EOT
-)")"
+)" -- "${targetBundleIDs[@]}" )"
 
 vscode_app_bundle=""
 fzf_exit_code=1
@@ -73,11 +95,7 @@ elif [[ "$fzf_exit_code" -ne 0 ]] || ! [[ -d "$vscode_app_bundle_path" ]]; then
 	exit 127
 fi
 
+vscode_bundle_id=$(defaults read "$vscode_app_bundle_path/Contents/Info.plist" CFBundleIdentifier 2>/dev/null)
+vscode_exec_name="${bundle_id_to_name_map[${(L)vscode_bundle_id}]:-code}"
 
-vscode_exec_path="$(
-	print -l "$vscode_app_bundle_path/Contents/Resources/app/bin"/* \
-	| grep -e '/code$' -e '/codium$' \
-	| head -n1
-)"
-
-exec "$vscode_exec_path" "$@"
+exec "$vscode_app_bundle_path/Contents/Resources/app/bin/$vscode_exec_name" "$@"
