@@ -17,6 +17,7 @@ Options:
 	--date-regex, -d REGEX      Regex pattern for full file name without path to extract date. [default: ]
 	--paths-from-stdin          Do not walk the filesystem, instead use paths from standard input one path per line.
 	--json-output               Instead of printing a human readable output in stdout, produce a json output and produce regular one on stderr.
+	--show-only-folders         Do not show the total duration or number of empty files.
 """
 
 import sys, locale, asyncio, subprocess, os, collections, re, itertools, pathlib, json
@@ -51,6 +52,7 @@ async def main(*, args: List[str], prog: str) -> int:
 		date_regex = [r"(?P<date>\d{8}).*", r".*\.(?P<date>\d{8})\.youtube\..*"]
 	paths_from_stdin = params.pop("--paths-from-stdin")
 	json_output = params.pop("--json-output")
+	show_only_folders = params.pop("--show-only-folders")
 	assert not cache_path, "--cache-path is not implemented"
 	assert not params, params
 
@@ -154,11 +156,12 @@ async def main(*, args: List[str], prog: str) -> int:
 			# Actual rendering with widths already calculated
 			await log.put("".join(pd.format(widths=widths) for pd in durations))
 
-		total = PathDuration("Total")
-		total.duration = sum(d.duration for d in path_durations.values())
-		total.count = sum(d.count for d in path_durations.values())
-		total.unique_days = set(itertools.chain(*(d.unique_days for d in path_durations.values())))
-		await log.put("\n" + total.format(widths=widths))
+		if not show_only_folders:
+			total = PathDuration("Total")
+			total.duration = sum(d.duration for d in path_durations.values())
+			total.count = sum(d.count for d in path_durations.values())
+			total.unique_days = set(itertools.chain(*(d.unique_days for d in path_durations.values())))
+			await log.put("\n" + total.format(widths=widths))
 
 		if json_output:
 			json.dump(
@@ -172,10 +175,10 @@ async def main(*, args: List[str], prog: str) -> int:
 			)
 			sys.stdout.write("\n")
 
-		if num_empty_files:
+		if num_empty_files and not show_only_folders:
 			await log.put(f"\nEmpty files: {num_empty_files:n}\n")
 
-		if files_failed:
+		if files_failed and not show_only_folders:
 			await log.put(f"{files_failed}\n")
 
 	def format_remaining_count(r, *, min_width=3, padding_right=" "):
