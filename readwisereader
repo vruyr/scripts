@@ -4,7 +4,7 @@
 Description
 """
 
-import sys, locale, argparse, asyncio, pathlib, json, os
+import sys, locale, argparse, asyncio, pathlib, json, urllib.parse
 # aiohttp==3.12.14
 import aiohttp
 
@@ -43,7 +43,7 @@ class ReadwiseReaderClient:
 	# https://readwise.io/reader_api
 	DOC_CREATE_URL = "https://readwise.io/api/v3/save/"
 	DOC_LIST_URL = "https://readwise.io/api/v3/list/"
-	# DOC_UPDATE_URL = "https://readwise.io/api/v3/update/<document_id>/"
+	DOC_UPDATE_URL = "https://readwise.io/api/v3/update/" # .../<document_id>/
 	# DOC_DELETE_URL = "https://readwise.io/api/v3/delete/<document_id>/"
 	TAG_LIST_URL = "https://readwise.io/api/v3/tags/"
 
@@ -103,6 +103,115 @@ class ReadwiseReaderClient:
 		) as response:
 			response.raise_for_status()
 			#TODO: If the response.status != 201 (200 == already exists), make sure to update the note as it will stay the old value.
+			if response.status == 201: # Created
+				return await response.json()
+			elif response.status == 200: # Already Exists
+				response_json = await response.json()
+				if not notes:
+					return response_json
+				document = await self.append_to_document_notes(
+					document_id=response_json["id"],
+					notes=notes,
+				)
+				return document
+			else:
+				# raise a not implement exception
+				raise NotImplementedError(f"Unexpected response status: {response.status}")
+
+			raise NotImplementedError("This should not be reached, check the response handling.")
+
+	async def append_to_document_notes(self, *, document_id, notes):
+		"""
+		Append notes to an existing document in Readwise Reader.
+		"""
+
+		if not self.session:
+			raise RuntimeError("Not initialized. Use `async with`.")
+
+		if not notes:
+			raise ValueError("No notes provided to append.")
+
+		document = await self.get_document(document_id=document_id)
+
+		old_notes = str(document.get("notes", "")).rstrip()
+
+		if old_notes:
+			new_notes = f"{old_notes}\n\n{notes}"
+		else:
+			new_notes = str(notes)
+
+		new_document = await self.update_document(
+			document_id=document_id,
+			notes=new_notes,
+		)
+
+		return new_document
+
+
+	async def get_document(self, *, document_id):
+		"""
+		Get the document for a given document ID from Readwise Reader.
+		"""
+
+		if not self.session:
+			raise RuntimeError("Not initialized. Use `async with`.")
+
+		headers = {
+			"Authorization": f"Token {self.access_token}",
+			"Content-Type": "application/json"
+		}
+
+		params = {
+			"id": document_id
+		}
+
+		#TODO: Move actual fetching to a list_documents method and call that here.
+
+		async with self.session.get(
+			self.DOC_LIST_URL,
+			headers=headers,
+			params=params,
+		) as response:
+			response.raise_for_status()
+			results = await response.json()
+			assert results["count"] == 1, f"Expected exactly one document for ID {document_id}, got {json.dumps(results, indent="  ")}"
+
+			document = results["results"][0]
+
+			return document
+
+
+	async def update_document(self, *, document_id, **fields):
+		"""
+		Set the note for a document in Readwise Reader.
+		"""
+
+		if not self.session:
+			raise RuntimeError("Not initialized. Use `async with`.")
+
+		if not len(fields):
+			raise ValueError("No fields provided to update.")
+
+		SUPPORTED_FIELDS = {
+			"title", "author", "summary",
+			"published_date", "image_url",
+			"location", "category"
+		}
+
+		if set(fields.keys()) - SUPPORTED_FIELDS:
+			raise ValueError(f"Unsupported fields: {set(fields.keys()) - SUPPORTED_FIELDS}. Supported fields are: {SUPPORTED_FIELDS}")
+
+		headers = {
+			"Authorization": f"Token {self.access_token}",
+			"Content-Type": "application/json"
+		}
+
+		async with self.session.patch(
+			urllib.parse.urljoin(self.DOC_UPDATE_URL, f"{document_id}/"),
+			headers=headers,
+			data=json.dumps(fields),
+		) as response:
+			response.raise_for_status()
 			return await response.json()
 
 	async def fetchTags(self):
