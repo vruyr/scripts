@@ -1,12 +1,26 @@
 #!/usr/bin/env zsh
 
+#
+# Note:
+#
+# This script will use `pretty.fzf` for log format, if one is configured in git.
+#
+# The git log format should contain two fields separated by Unit Separator (U+001F):
+#
+# 1. The commit itself that fzf will show to the user.
+# 2. The commit hash that fzf will use to return to the user and use in the preview command.
+#
+# Individual commits will be separated by a NUL character (U+0000) so newlines are supported.
+#
+
+git_log_format_default='tformat:%h% t% ad% aE%+s%+D%n%x1F%H'
+
 git_log_args=(
 	--graph
 	-z
-	--pretty=fzf
+	--pretty="${"${"$(git config --get pretty.fzf)":+"fzf"}":-"$git_log_format_default"}"
 	"$@"
 )
-
 
 typeset -A git_configs_kv
 git_configs_kv=(
