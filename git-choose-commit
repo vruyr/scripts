@@ -26,16 +26,18 @@ typeset -A git_configs_kv
 git_configs_kv=(
 	[color.ui]='always'
 )
-git_configs=()
+export GIT_CONFIG_COUNT=0
 for key value in "${(@kv)git_configs_kv}"; do
-	git_configs+=( "-c" "$key=$value" );
+	export GIT_CONFIG_KEY_"$((GIT_CONFIG_COUNT))"="$key"
+	export GIT_CONFIG_VALUE_"$((GIT_CONFIG_COUNT))"="$value"
+	export GIT_CONFIG_COUNT="$((GIT_CONFIG_COUNT + 1))"
 done
 unset git_configs_kv
 
 
 preview_command='
 	git show \
-		--format=fuller \
+		--pretty=fuller \
 		--date="format-local:%a %m/%d/%Y %H:%M:%S %z" {2} \
 	| \
 	delta --width=$FZF_PREVIEW_COLUMNS
@@ -62,4 +64,4 @@ fzf_args=(
 	--preview "$preview_command"
 )
 
-git "${git_configs[@]}" log "${git_log_args[@]}" | fzf "$fzf_args[@]"
+git log "${git_log_args[@]}" | fzf "$fzf_args[@]"
