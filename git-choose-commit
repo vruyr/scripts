@@ -8,14 +8,15 @@ git_log_args=(
 )
 
 
-typeset -A git_configs
-git_configs=(
+typeset -A git_configs_kv
+git_configs_kv=(
 	[color.ui]='always'
 )
-git_configs_args=()
-for key value in "${(@kv)git_configs}"; do
-	git_configs_args+=( "-c" "$key=$value" );
+git_configs=()
+for key value in "${(@kv)git_configs_kv}"; do
+	git_configs+=( "-c" "$key=$value" );
 done
+unset git_configs_kv
 
 
 preview_command='
@@ -47,4 +48,4 @@ fzf_args=(
 	--preview "$preview_command"
 )
 
-git "${git_configs_args[@]}" log "${git_log_args[@]}" | fzf "$fzf_args[@]"
+git "${git_configs[@]}" log "${git_log_args[@]}" | fzf "$fzf_args[@]"
