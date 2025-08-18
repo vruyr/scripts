@@ -1,0 +1,50 @@
+#!/usr/bin/env zsh
+
+git_log_args=(
+	--graph
+	-z
+	--pretty=fzf
+	"$@"
+)
+
+
+typeset -A git_configs
+git_configs=(
+	[color.ui]='always'
+)
+git_configs_args=()
+for key value in "${(@kv)git_configs}"; do
+	git_configs_args+=( "-c" "$key=$value" );
+done
+
+
+preview_command='
+	git show \
+		--format=fuller \
+		--date="format-local:%a %m/%d/%Y %H:%M:%S %z" {2} \
+	| \
+	delta --width=$FZF_PREVIEW_COLUMNS
+'
+
+#TODO Delta fails to detect terminal colors from within fzf. Fix it.
+
+fzf_args=(
+	--read0
+	--delimiter $'\x1F'
+	--with-nth 1
+	--accept-nth 2
+
+	--reverse
+	--no-sort
+	--ansi
+	--wrap
+	--highlight-line
+
+	--with-shell 'zsh -c'
+
+	--bind 'resize:refresh-preview'
+	--preview-window wrap
+	--preview "$preview_command"
+)
+
+git "${git_configs_args[@]}" log "${git_log_args[@]}" | fzf "$fzf_args[@]"
