@@ -40,10 +40,14 @@ preview_command='
 		--pretty=fuller \
 		--date="format-local:%a %m/%d/%Y %H:%M:%S %z" {2} \
 	| \
-	delta --width=$FZF_PREVIEW_COLUMNS
+	delta "$DELTA_DARK_OR_LIGHT" --width=$FZF_PREVIEW_COLUMNS
 '
 
-#TODO Delta fails to detect terminal colors from within fzf. Fix it.
+source "${0:h}/query-terminal.zsh"
+
+export DELTA_DARK_OR_LIGHT=$(
+	query_terminal_luminance --dark --light
+)
 
 fzf_args=(
 	--read0
