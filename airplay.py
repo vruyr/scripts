@@ -4,8 +4,9 @@
 Description
 """
 
-import sys, locale, argparse, asyncio, os
+import sys, locale, argparse, asyncio, os, datetime, subprocess, json, urllib.parse, webbrowser
 import pyatv, pyatv.const, pyatv.storage.file_storage
+from ytdlp_obsidian import format_ytdlp_entry_for_obsidian
 
 
 # https://github.com/postlund/pyatv/issues/2512
@@ -41,7 +42,7 @@ async def main(
 
 	atv = await pyatv.connect(atv_conf, loop, storage=storage)
 
-	await atv.stream.play_url("http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4")
+	await add_playing_youtube_video_to_obsidian(atv)
 
 	await asyncio.gather(*atv.close())
 
@@ -50,6 +51,54 @@ async def main(
 	#
 
 	await storage.save()
+
+
+async def add_playing_youtube_video_to_obsidian(atv):
+	now = datetime.datetime.now(datetime.timezone.utc).astimezone()
+	now = now.replace(microsecond=0)
+
+	playing = await atv.metadata.playing()
+
+	print(playing, file=sys.stderr)
+	print()
+
+	ytdlp_cmd = [
+		"yt-dlp", "--dump-single-json",
+		f"ytsearch:{playing.title}",
+		"--match-filter", f"uploader={playing.artist}",
+		"--match-filter", f"duration={playing.total_time}",
+	]
+	p = subprocess.run(ytdlp_cmd, check=True, shell=False, text=True, stdout=subprocess.PIPE)
+
+	response = json.loads(p.stdout)
+
+	for entry in response["entries"]:
+		upload_date = datetime.datetime.strptime(entry["upload_date"], "%Y%m%d")
+		duration = datetime.timedelta(seconds=entry["duration"])
+		print((
+			"{title} ({duration_str})\n"
+			"{uploader} ∙ {view_count} views ∙ {upload_date_parsed:%Y-%m-%d}\n"
+			"{webpage_url}\n"
+		).format(**entry, duration_str=str(duration).removeprefix("0:"), upload_date_parsed=upload_date))
+
+		markdown = f"(date::{now.isoformat()})\n\n{format_ytdlp_entry_for_obsidian(entry)}\n"
+
+		webbrowser.open(urllib.parse.urlunsplit((
+			"obsidian", "new", "",
+			urllib.parse.urlencode(
+				{
+					"name": now.strftime("%Y-%m-%d"),
+					"append": "true",
+					"content": markdown,
+				},
+				quote_via=urllib.parse.quote,
+			),
+			""
+		)))
+
+
+async def start_playing_a_video(atv):
+	await atv.stream.play_url("http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4")
 
 
 async def pair_with_appletv_protocol(atv_conf, loop, storage, protocol):
