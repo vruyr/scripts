@@ -290,8 +290,11 @@ def parse_imap_list_response_entry(entry):
 
 
 def get_password(server, username):
+	cmd_security_args = ["-r", "imap", "-s", server, "-a", username, "-w"]
+	cmd = ["security", "find-internet-password", *cmd_security_args]
+	show_msg(3, "Executing: {}", " ".join(shlex.quote(x) for x in cmd))
 	p = subprocess.run(
-		["security", "find-internet-password", "-r", "imap", "-s", server, "-a", username, "-w"],
+		cmd,
 		shell=False,
 		stdin=subprocess.DEVNULL,
 		stdout=subprocess.PIPE,
@@ -304,11 +307,7 @@ def get_password(server, username):
 	show_msg(2, "No password found in Keychain, prompting.")
 	password = getpass.getpass("Password ({u}@{s}): ".format(u=username, s=server))
 	show_msg(0, "To save the password, execute: {}", " ".join(shlex.quote(x) for x in [
-		"security", "add-internet-password",
-		"-r", "imap",
-		"-s", server,
-		"-a", username,
-		"-w"
+		"security", "add-internet-password", *cmd_security_args
 	]))
 	return password
 
