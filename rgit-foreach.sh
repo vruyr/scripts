@@ -102,6 +102,7 @@ function incoming() {
 	at_least_one_not_skipped=
 	at_least_one_skipped=
 	output_messages=()
+	incoming_revs=()
 	for r in $(git remote); do
 		u="$(git remote get-url "$r")"
 
@@ -134,15 +135,16 @@ function incoming() {
 
 		at_least_one_not_skipped=1
 
-		exclusions=()
-		excluded_refs=()
-		while IFS='' read -r line; do [ "$line" ] && excluded_refs+=("$line"); done < <(
+		excluded_remote_refs=()
+		while IFS='' read -r line; do [ "$line" ] && excluded_remote_refs+=("$line"); done < <(
 			git config --get-all "remote.$r.rgit-ignore-refs" | sed 's|^refs/heads/||'
 		)
 		unset line
-		for exref in "${excluded_refs[@]}"; do
-			exclusions+=( "--exclude" "$r/$exref" )
+		exclude_ignored_remote_refs=()
+		for exref in "${excluded_remote_refs[@]}"; do
+			exclude_ignored_remote_refs+=( "--exclude" "$r/$exref" )
 		done
+		unset excluded_remote_refs
 
 		git fetch --prune -q "$r"
 		read -r -a exclude_local_refs < <(
@@ -156,16 +158,32 @@ function incoming() {
 		fi
 
 		local -a exclude_tmp_commits=(
-			--invert-grep --grep='^TMP$' --grep='^TMP:'
+			--invert-grep --grep='^TMP$' --grep='^TMP:' --grep='^TMP '
 		)
 		local -a git_log_args=(
-			"${exclusions[@]}" --remotes="$r" "${exclude_local_refs[@]}"
+			--remotes="$r"
+			"${exclude_ignored_remote_refs[@]}"
+			"${exclude_local_refs[@]}"
+			"${exclude_tmp_commits[@]}"
 		)
-		if [ -n "$(git -P log --oneline "${git_log_args[@]}" "${exclude_tmp_commits[@]}" -- )" ]; then
-			l="$(git -c color.ui="$color_ui" -P lg -10 --boundary "${git_log_args[@]}" -- | sed $'s/^/\t\t/')"
-			output_messages+=( "$(printf "\n\t%s\n%s\x1b[0m\n" "$r" "$l")" )
-		fi
+
+		for rev in $(git log --pretty='tformat:%H' "${git_log_args[@]}" --); do
+			rev_note=$(git notes show 2>/dev/null "$rev" || true)
+			if [ "$rev_note" == "skip" ]; then
+				continue
+			fi
+			incoming_revs+=( "$rev" )
+		done
+
 	done
+
+	if [ ${#incoming_revs[@]} -ne 0 ]; then
+		output_messages+=(
+			$'\n'
+			"$(git -c color.ui="$color_ui" -P log --pretty=compact --no-walk "${incoming_revs[@]}" -- | sed $'s/^/\t/')"
+			$'\n'
+		)
+	fi
 
 	if [ -n "$at_least_one_not_skipped" ] && [ -z "$at_least_one_skipped" ]; then
 		if [ "${#output_messages[@]}" -ne 0 ]; then
