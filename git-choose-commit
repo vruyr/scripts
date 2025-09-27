@@ -36,6 +36,9 @@ unset git_configs_kv
 
 
 preview_command='
+	if (( $FZF_PREVIEW_COLUMNS >= 140 )); then
+		export DELTA_FEATURES='+side-by-side'
+	fi
 	git show \
 		--pretty=fuller \
 		--date="format-local:%a %m/%d/%Y %H:%M:%S %z" {2} \
