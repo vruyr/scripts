@@ -9,6 +9,7 @@ function main(...args) {
 		"--prepend-date": parseArgs.flag("prependCreationDate"),
 		"--copy"        : parseArgs.flag("copyToPasteboard"),
 		"--json"        : parseArgs.flag("writeJson"),
+		"--task"        : parseArgs.flag("outputAsObsidianTask"),
 	});
 
 	var result = [];
@@ -27,7 +28,7 @@ function main(...args) {
 			if(params.writeJson) {
 				taskStr = taskToJsonString(task);
 			} else {
-				taskStr = taskToObsidianText(task);
+				taskStr = taskToObsidianText({task, outputAsObsidianTask: params.outputAsObsidianTask});
 			}
 			result.push(taskStr);
 			if(params.prependCreationDate) {
@@ -109,7 +110,8 @@ function taskToJsonString(task) {
 }
 
 
-function taskToObsidianText(task) {
+function taskToObsidianText(params) {
+	const {task, outputAsObsidianTask} = params;
 	var result = [];
 
 	function line(indent, str) {
@@ -121,23 +123,38 @@ function taskToObsidianText(task) {
 	let modificationDate = dateToStr(task.modificationDate());
 	let note = task.note().trim();
 
-	line(0, `(date::${creationDate})`);
-	line(0, "");
-
-	let mainLine = `${taskName}`;
+	let modificationDateField = "";
 	if(modificationDate !== creationDate) {
-		mainLine += `  [modified::${modificationDate}]`;
+		modificationDateField += `  [modified::${modificationDate}]`;
 	}
-	line(0, mainLine);
 
-	if(note) {
-		if(!/^https?:\/\/\S+$/.test(note)) {
-			line(0, "");
+	if(outputAsObsidianTask) {
+		if(isUrl(note)) {
+			line(0, `- [ ] [${taskName}](${note}) [added::${creationDate}] ${modificationDateField}`)
+		} else {
+			line(0, `- [ ] ${taskName} [added::${creationDate}]${modificationDateField}`);
+			if(note) {
+				for(const noteLine of note.split("\n")) {
+					line(1, noteLine);
+				}
+			}
 		}
-		line(0, note);
-	}
+	} else {
+		line(0, `(date::${creationDate})`);
+		line(0, "");
 
-	line(0, "");
+		let mainLine = `${taskName}${modificationDateField}`;
+		line(0, mainLine);
+
+		if(note) {
+			if(!isUrl(note)) {
+				line(0, "");
+			}
+			line(0, note);
+		}
+
+		line(0, "");
+	}
 
 	var indentWidth = 4;
 	result = result.map(function(args) {
@@ -147,6 +164,10 @@ function taskToObsidianText(task) {
 	return result.join("\n");
 }
 
+
+function isUrl(text) {
+	return /^https?:\/\/\S+$/.test(text);
+}
 
 function taskToSectionText(task) {
 	var dateStr = dateToShortStr(task.creationDate());
