@@ -14,10 +14,23 @@ function main() {
 	fi
 
 	local show_path=
-	if [ "$1" == "--show" ]; then
-		show_path=1
-		shift
-	fi
+	local only_here=
+	while [ $# -ne 0 ]; do
+		if [ "$1" == "--show" ]; then
+			show_path=1
+			shift
+			continue
+		fi
+
+		if [ "$1" == "--here" ]; then
+			only_here=1
+			shift
+			continue
+		fi
+
+		break
+	done
+
 
 	all_repos=()
 	while IFS='' read -r line; do [ "$line" ] && all_repos+=("$line"); done < <(
@@ -37,6 +50,13 @@ function main() {
 	local r
 	for r in "${all_repos[@]}"; do
 		r="$(cd "$HOME" && cd "$(git --git-dir "$r" rev-parse --git-path .)" && pwd)"
+
+		if [ "$only_here" ]; then
+			if [[ "$(cd "$r" && pwd)" != "$(pwd)"/* ]]; then
+				continue
+			fi
+		fi
+
 		(
 			local curdir
 			if [ "$(git -C "$r" --git-dir "$r" config --get --bool core.bare)" == "false" ]; then
