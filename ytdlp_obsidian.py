@@ -59,7 +59,7 @@ def format_seconds(seconds):
 	if h > 0:
 		return f"{h}:{m:02}:{s:02}"
 	else:
-		return f"{m}:{s:02}"
+		return f"{m:02}:{s:02}"
 
 
 if __name__ == "__main__":
