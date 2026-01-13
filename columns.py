@@ -1,4 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env uv --quiet run --script --
+# /// script
+# # Docopt issues SyntaxWarning in Python 3.12
+# requires-python = ">=3.11,<3.12"
+# dependencies = [
+#   "docopt >=0.6.2",
+# ]
+# ///
 
 """
 Usage:
@@ -11,7 +18,6 @@ Options:
 """
 
 import sys, locale, os, re, functools, itertools
-# pip install docopt==0.6.2
 import docopt
 
 
