@@ -1,0 +1,37 @@
+#!/usr/bin/env zsh
+
+function iclone-sync() {
+
+	local c
+	for c in ${(@0):-"$(git config get --all --regex --show-name --null 'url\..*\.insteadof')"}; do
+		IFS=$'\n' read -r key value <<< "$c"
+		local key="${c%%$'\n'*}"
+		local value="${c#*$'\n'}"
+
+		local repo_path_prefix="${${key#url.}%.insteadof}"
+		local url_prefix="$value"
+
+		if [[ "$url_prefix" =~ 'sync://([^/]*)/' ]]; then
+			local remote_name="${match[1]}"
+			break
+		fi
+	done
+
+	[[ -n "$repo_path_prefix" && -n "$url_prefix" && -n "$remote_name" ]] || remote
+
+	local repo_url="$(() {
+			cd "$repo_path_prefix";
+			local repo="$(fd -g -td '*.git' | sed -E 's|/$||' | fzf --reverse --height=-10 --preview 'git-repo-info {}')";
+			[[ -d "$repo" ]] && echo "$url_prefix$repo";
+	})";
+
+	[[ -n "$repo_url" ]] || return 1;
+
+	local branch_ref="$(git ls-remote --branches "$repo_url" | fzf --reverse --height=~100% --delimiter=$'\t' --accept-nth=2 --select-1)";
+
+	[[ -n "$branch_ref" ]] || return 1;
+
+	git clone -o "$remote_name" -b "${branch_ref#refs/heads/}" "$repo_url" "$@";
+}
+
+iclone-sync "$@"

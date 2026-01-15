@@ -1,0 +1,166 @@
+#!/usr/bin/env zsh
+
+setopt ERR_EXIT
+typeset -g _zsh_last_command _zsh_last_line
+TRAPDEBUG() {
+	_zsh_last_command="$ZSH_DEBUG_CMD"
+	_zsh_last_line="${funcfiletrace[1]##*:}"
+}
+TRAPZERR() {
+	print -u2 "FAILING COMMAND (line $_zsh_last_line): $_zsh_last_command"
+	echo
+	return 1
+}
+
+if ! [[ $# -eq 1 && -d "$1" ]]; then
+	echo "USAGE: $0:t REPO_PATH"
+	exit 1
+fi
+
+cd "$1"
+
+() {
+	typeset -g USE_COLORS=""
+
+	if [[ -n "${FZF_PREVIEW_COLUMNS}" ]]; then
+		# The stty command hangs from inside fzf preview window when trying to set raw mode.
+		# Use COLORFGBG to decide light/dark.
+		[[ -n "${COLORFGBG}" ]] || return;
+		local bg_color="${COLORFGBG##*;}"
+		if [[ "$bg_color" =~ ^[0-9]+$ ]]; then
+			# Color indices 0-7 are typically dark backgrounds
+			# Color indices 8-15 are typically light backgrounds
+			if [[ $bg_color -ge 8 ]]; then
+				USE_COLORS=light
+			else
+				USE_COLORS=dark
+			fi
+		fi
+		return
+	fi
+
+	[[ -t 0 ]] || return
+
+	USE_COLORS=light
+
+	local osc11_response=""
+	() {
+		local ttyfd
+		: {ttyfd}<>"$(tty)"
+		# The stty command will use stdin which is same as $ttyfd
+		local oldstty="$(stty -g)"
+		stty raw -echo min 0 time 1
+		print -u "$ttyfd" -n '\e]11;?\e\\'
+		read -r -u "$ttyfd" -t 0.1 osc11_response || true
+		stty "$oldstty"
+		: {ttyfd}>&-
+	}
+
+	# Parse OSC 11 response: ESC]11;rgb:RRRR/GGGG/BBBB ESC\ or BEL
+	if [[ "$osc11_response" =~ rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+) ]]; then
+		local r=$((16#${match[1]:0:2}))
+		local g=$((16#${match[2]:0:2}))
+		local b=$((16#${match[3]:0:2}))
+
+		# Calculate relative luminance (simplified)
+		local luminance=$(( (r * 299 + g * 587 + b * 114) / 1000 ))
+
+		if [[ $luminance -lt 128 ]]; then
+			USE_COLORS=dark
+		fi
+	fi
+}
+
+TERM_WIDTH=${FZF_PREVIEW_COLUMNS:-${COLUMNS:-20}}
+
+box_hl=$'\u2500'
+box_vl=$'\u2502'
+box_ul=$'\u250C'
+box_ur=$'\u2510'
+box_ll=$'\u2514'
+box_lr=$'\u2518'
+
+function hr() {
+	local width="${1:-$TERM_WIDTH}"
+	printf -v line '%*s' "$width" ''
+
+	[ -n "$USE_COLORS" ] && printf '\e[2m' || true
+	printf '%s' "${line// /$box_hl}"
+	[ -n "$USE_COLORS" ] && printf '\e[0m' || true
+}
+
+function section() {
+	local text="$1"
+
+	if [[ "$text" == "---" ]]; then
+		printf '\n'
+		hr "$((TERM_WIDTH))"
+		printf '\n'
+		printf '\n'
+		return
+	fi
+
+	local line_width=$((TERM_WIDTH-2))  # 2 = left and right corners
+	local text_width=$((TERM_WIDTH-4))  # 4 = two vertical bars and two padding spaces
+
+	printf '\n'
+
+	printf '%s' "$box_ul"
+	hr "$line_width"
+	printf '%s' "$box_ur"
+
+	printf '\n'
+
+	if [ -n "$text" ]; then
+		printf '%s ' "$box_vl"
+		printf '%-*.*s' "$text_width" "$text_width" "$text"
+		printf ' %s' "$box_vl"
+		printf '\n'
+	fi
+
+	printf '%s' "$box_ll"
+	hr "$line_width"
+	printf '%s' "$box_lr"
+	printf '\n'
+}
+
+function the_bat() {
+	bat \
+		--terminal-width \
+		"$TERM_WIDTH" \
+		--paging=never \
+		--style=numbers \
+		--decorations always \
+		${USE_COLORS:+--color=always} \
+		${USE_COLORS:+--theme="$USE_COLORS"} \
+		"$@"
+}
+
+section "References"
+git ls-remote --symref .
+
+section "Tree at HEAD"
+git ls-tree HEAD --format "%(objectmode) %(objecttype) %(objectsize:padded) %(path)"
+
+section "Contributors"
+the_bat --line-range=:10 <(
+	git --no-pager shortlog \
+		--summary \
+		--email \
+		--numbered \
+		--group=author \
+		--group=trailer:co-authored-by \
+		--group=committer \
+		--all
+)
+
+for readme in README.md README.rst README.txt README; do
+	oid="$(git rev-parse --verify HEAD:"$readme" 2>/dev/null || true)"
+	[[ $? -eq 0 && -n "$oid" ]] || continue
+
+	printf '\n'
+	section "$readme"
+	the_bat --file-name "$readme" <(git cat-file -p "HEAD:$readme")
+
+	break
+done
