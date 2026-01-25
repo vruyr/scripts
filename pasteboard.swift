@@ -42,6 +42,23 @@ func printFullContent(_ pasteboard: NSPasteboard, of type: NSPasteboard.Pasteboa
 	if let string = String(data: data, encoding: .utf8) {
 		print(string)
 	} else {
+		// Check if it's a binary property list and convert to XML
+		do {
+			var format = PropertyListSerialization.PropertyListFormat.binary
+			let plist = try PropertyListSerialization.propertyList(from: data, options: [], format: &format)
+
+			// If it was a binary plist, convert to XML
+			if format == .binary {
+				let xmlData = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+				if let xmlString = String(data: xmlData, encoding: .utf8) {
+					print(xmlString)
+					return
+				}
+			}
+		} catch {
+			// Not a property list, continue with hex dump
+		}
+
 		// Fall back to raw hex dump
 		let hex = data.map { String(format: "%02hhx", $0) }.joined(separator: " ")
 		print(hex)
