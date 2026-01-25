@@ -1,4 +1,4 @@
-#!/usr/bin/env uv --quiet run --script --
+#!/usr/bin/env uv --quiet run --no-project --script --isolated --refresh --
 # /// script
 # # Docopt issues SyntaxWarning in Python 3.12
 # requires-python = ">=3.11,<3.12"
