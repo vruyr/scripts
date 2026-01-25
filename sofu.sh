@@ -172,12 +172,8 @@ function main() {
 	fi
 	if [ "$macappstore_outdated" ]; then
 		if type >/dev/null 2>&1 mas; then
-			if [[ "$(mas version)" =~ ^(1|2)\..* ]]; then
-				echo "--- mas outdated"
-				eval_indent 'mas outdated'
-			else
-				echo "--- mas outdated - NOT SUPPORTED"
-			fi
+			echo "--- mas outdated"
+			eval_indent 'mas outdated'
 		else
 			echo "--- mas outdated - NOT AVAILABLE"
 		fi
