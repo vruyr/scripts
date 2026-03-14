@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+###
+### Dependencies:
+###   - ImageMagick (https://imagemagick.org/)
+###   - Ghostscript (https://www.ghostscript.com/)
+###
 
 MAGICK=magick
 MAGICK_DENSITY=300
