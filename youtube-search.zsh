@@ -15,6 +15,10 @@ youtube-search () {
 	local cmd_uv="$(command -v uv 2>/dev/null)"
 	[[ -n "$cmd_uv" ]] || { print -u2 "youtube-search: missing dependency: uv"; return 1; }
 
+	local cmd_deno="$(command -v deno 2>/dev/null)"
+	local -a js_opts=()
+	[[ -n "$cmd_deno" ]] && js_opts=(--js-runtimes "deno:${cmd_deno}" --remote-components ejs:github)
+
 	local search_query="$1"
 	if [[ -z "$search_query" ]]; then
 		read -r 'search_query?YouTube Search: '
@@ -36,7 +40,7 @@ youtube-search () {
 	local -a extra_opts=()
 	[[ -n "$channel" && "$num_results" -gt 0 ]] && extra_opts=(--max-downloads "$num_results")
 
-	local yt_cmd=("$cmd_uv" tool run -q yt-dlp@latest --no-warnings --skip-download --quiet "${extra_opts[@]}" --print "$output_format" "$source")
+	local yt_cmd=("$cmd_uv" tool run -q yt-dlp@latest --skip-download --quiet "${js_opts[@]}" "${extra_opts[@]}" --print "$output_format" "$source")
 
 	if [[ -n "$use_thumbnails" ]]; then
 		local cmd_timg="$(command -v timg 2>/dev/null)"
@@ -64,19 +68,15 @@ youtube-search () {
 
 		local thumb_format=$'%(thumbnail)s\t%(webpage_url)s\t%(id)s\t%(upload_date>%Y-%m-%d)s\t%(view_count&{:,})s\t%(duration_string)s\t%(uploader)s\t%(title)s'
 
-		"$cmd_uv" tool run -q yt-dlp@latest --no-warnings --skip-download --quiet \
-			"${extra_opts[@]}" --print "$thumb_format" "$source" \
+		"$cmd_uv" tool run -q yt-dlp@latest --skip-download --quiet \
+			"${js_opts[@]}" "${extra_opts[@]}" --print "$thumb_format" "$source" \
 		| while IFS=$'\t' read -r thumbnail url id date views duration uploader title; do
 			local tmp="/tmp/youtube-thumbnail-${id}"
 			"$cmd_curl" -fsSL "$thumbnail" -o "$tmp" 2>/dev/null || { rm -f "$tmp"; continue; }
 			local img_dims=($("$cmd_sips" -g pixelWidth -g pixelHeight "$tmp" 2>/dev/null | "$cmd_awk" '/pixel/{print $2}'))
 			local img_w=${img_dims[1]:-0} img_h=${img_dims[2]:-0}
-			local scaled_cols
-			if (( img_w > 0 && img_h > 0 )); then
-				scaled_cols=$(( (img_w * thumb_rows * cell_height_px + img_h * cell_width_px - 1) / (img_h * cell_width_px) ))
-			else
-				scaled_cols=$thumb_cols
-			fi
+			local scaled_cols=$thumb_cols
+			(( img_w > 0 && img_h > 0 )) && scaled_cols=$(( (img_w * thumb_rows * cell_height_px + img_h * cell_width_px - 1) / (img_h * cell_width_px) ))
 			local info_col=$(( (scaled_cols < thumb_cols ? scaled_cols : thumb_cols) + 1 ))
 			printf '\e7'  # DECSC: save cursor position
 			"$cmd_timg" -g "${thumb_cols}x${thumb_rows}" "$tmp"
