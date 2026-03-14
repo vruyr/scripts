@@ -82,6 +82,27 @@ youtube-search () {
 			printf '\e7'  # DECSC: save cursor position
 			"$cmd_timg" -g "${thumb_cols}x${thumb_rows}" "$tmp"
 
+			# NOTE: Kitty protocol image ID collision risk.
+			#
+			# The `timg` tool generates Kitty image IDs as (time(nullptr) << 7) + counter,
+			# where counter is a per-process static starting at zero. Two timg processes
+			# launched within the same second will produce the same ID for their first image.
+			# If a terminal receives a new image upload with a previously used ID, it replaces
+			# the stored image and re-renders all virtual placements referencing that ID,
+			# corrupting earlier thumbnails on screen. There is no CLI flag in timg to control
+			# the chosen ID.
+			# Sending a Kitty "delete all images" command after each timg call does not help
+			# because Kitty placements are virtual — the terminal renders from its image store
+			# on every repaint, so deleting the store immediately blanks all placed images.
+			# The iTerm2 inline image protocol has no image IDs at all; it transfers raw
+			# pixel data that is burned directly into the terminal's cell buffer, making it
+			# immune to this class of corruption. The unicode half-block (-ph) and
+			# quarter-block (-pq) modes are similarly immune since they emit ordinary text
+			# characters with color attributes that are stored in the terminal's cell buffer
+			# and never reference any shared image store. The practical risk with Kitty is
+			# low because thumbnail downloads typically take more than a second each, giving
+			# each timg process a distinct time-based kStart value, but it is not guaranteed.
+
 			local today_epoch=$(date +%s)
 			local video_epoch=$(date -j -f "%Y-%m-%d" "$date" +%s 2>/dev/null || date -d "$date" +%s)
 			local days_ago=$(( (today_epoch - video_epoch) / 86400 ))
