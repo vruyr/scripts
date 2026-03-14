@@ -78,6 +78,7 @@ youtube-search () {
 			local scaled_cols=$thumb_cols
 			(( img_w > 0 && img_h > 0 )) && scaled_cols=$(( (img_w * thumb_rows * cell_height_px + img_h * cell_width_px - 1) / (img_h * cell_width_px) ))
 			local info_col=$(( (scaled_cols < thumb_cols ? scaled_cols : thumb_cols) + 1 ))
+			printf '\n%.0s' {1..$thumb_rows}; printf '\e[%dA\r' "$thumb_rows"  # pre-scroll: reserve space so timg won't scroll
 			printf '\e7'  # DECSC: save cursor position
 			"$cmd_timg" -g "${thumb_cols}x${thumb_rows}" "$tmp"
 
