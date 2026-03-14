@@ -40,7 +40,7 @@ youtube-search () {
 	local -a extra_opts=()
 	[[ -n "$channel" && "$num_results" -gt 0 ]] && extra_opts=(--max-downloads "$num_results")
 
-	local yt_cmd=("$cmd_uv" tool run -q yt-dlp@latest --skip-download --quiet "${js_opts[@]}" "${extra_opts[@]}" --print "$output_format" "$source")
+	local yt_cmd=("$cmd_uv" tool run -q yt-dlp@latest --skip-download --quiet --lazy-playlist "${js_opts[@]}" "${extra_opts[@]}" --print "$output_format" "$source")
 
 	if [[ -n "$use_thumbnails" ]]; then
 		local cmd_timg="$(command -v timg 2>/dev/null)"
@@ -68,7 +68,8 @@ youtube-search () {
 
 		local thumb_format=$'%(thumbnail)s\t%(webpage_url)s\t%(id)s\t%(upload_date>%Y-%m-%d)s\t%(view_count&{:,})s\t%(duration_string)s\t%(uploader)s\t%(title)s'
 
-		"$cmd_uv" tool run -q yt-dlp@latest --skip-download --quiet \
+		printf '\e[2mSearching "%s"...\e[0m\r' "$search_query" >/dev/tty
+		"$cmd_uv" tool run -q yt-dlp@latest --skip-download --quiet --lazy-playlist \
 			"${js_opts[@]}" "${extra_opts[@]}" --print "$thumb_format" "$source" \
 		| while IFS=$'\t' read -r thumbnail url id date views duration uploader title; do
 			local tmp="/tmp/youtube-thumbnail-${id}"
@@ -164,12 +165,15 @@ print('─' * width)
 	[[ -z "$use_fzf" || -n "$cmd_fzf" ]] || { print -u2 "youtube-search: missing dependency: fzf"; return 1; }
 
 	if [[ -n "$use_fzf" ]]; then
+		printf '\e[2mSearching "%s"...\e[0m\n' "$search_query" >/dev/tty
 		{ print -- "$col_header"; "${yt_cmd[@]}"; } \
 			| "$cmd_fzf" --reverse --height="$fzf_height" --ansi --delimiter=' ' --accept-nth=1 --multi \
 				  --header-lines=2
 	else
 		print -- "$col_header"
+		printf '\e[2mSearching "%s"...\e[0m\r' "$search_query" >/dev/tty
 		"${yt_cmd[@]}"
+		printf '\e[K' >/dev/tty
 	fi
 }
 
