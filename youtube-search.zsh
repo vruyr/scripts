@@ -81,7 +81,9 @@ youtube-search () {
 			local info_col=$(( (scaled_cols < thumb_cols ? scaled_cols : thumb_cols) + 1 ))
 			printf '\n%.0s' {1..$thumb_rows}; printf '\e[%dA\r' "$thumb_rows"  # pre-scroll: reserve space so timg won't scroll
 			printf '\e7'  # DECSC: save cursor position
+			printf '\e]8;;%s\a' "$url"
 			"$cmd_timg" -g "${thumb_cols}x${thumb_rows}" "$tmp"
+			printf '\e]8;;\a'
 
 			# NOTE: Kitty protocol image ID collision risk.
 			#
