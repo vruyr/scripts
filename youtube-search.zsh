@@ -78,6 +78,7 @@ youtube-search () {
 				scaled_cols=$thumb_cols
 			fi
 			local info_col=$(( (scaled_cols < thumb_cols ? scaled_cols : thumb_cols) + 1 ))
+			printf '\e7'  # DECSC: save cursor position
 			"$cmd_timg" -g "${thumb_cols}x${thumb_rows}" "$tmp"
 
 			local today_epoch=$(date +%s)
@@ -103,7 +104,7 @@ youtube-search () {
 				''
 				"${id}"
 			)
-			printf "\e[${thumb_rows}A"
+			printf '\e8'  # DECRC: restore cursor to position saved above
 			for line in "${info_lines[@]}"; do
 				printf "\e[${info_col}C%s\n" "$line"
 			done
