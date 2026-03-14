@@ -70,8 +70,13 @@ youtube-search () {
 			local tmp="/tmp/youtube-thumbnail-${id}"
 			"$cmd_curl" -fsSL "$thumbnail" -o "$tmp" 2>/dev/null || { rm -f "$tmp"; continue; }
 			local img_dims=($("$cmd_sips" -g pixelWidth -g pixelHeight "$tmp" 2>/dev/null | "$cmd_awk" '/pixel/{print $2}'))
-			local img_w=${img_dims[1]} img_h=${img_dims[2]}
-			local scaled_cols=$(( (img_w * thumb_rows * cell_height_px + img_h * cell_width_px - 1) / (img_h * cell_width_px) ))
+			local img_w=${img_dims[1]:-0} img_h=${img_dims[2]:-0}
+			local scaled_cols
+			if (( img_w > 0 && img_h > 0 )); then
+				scaled_cols=$(( (img_w * thumb_rows * cell_height_px + img_h * cell_width_px - 1) / (img_h * cell_width_px) ))
+			else
+				scaled_cols=$thumb_cols
+			fi
 			local info_col=$(( (scaled_cols < thumb_cols ? scaled_cols : thumb_cols) + 1 ))
 			"$cmd_timg" -g "${thumb_cols}x${thumb_rows}" "$tmp"
 
