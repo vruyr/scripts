@@ -1,8 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env uv --quiet run --no-project --script --isolated --refresh --
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#   "IMAPClient >=2.2.0,<3.0",
+# ]
+# ///
 
 import sys, urllib.parse, imaplib, ssl, getpass, hmac, email, email.policy, shlex, subprocess, re, json
 from typing import Any
-# pip install IMAPClient==2.2.0
 from imapclient import imap_utf7
 
 # https://datatracker.ietf.org/doc/html/rfc3501.html
