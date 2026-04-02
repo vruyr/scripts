@@ -1,0 +1,94 @@
+#!/usr/bin/env -S uv --quiet run --no-project --script --
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+# ]
+# ///
+
+import argparse
+import ssl
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from urllib.parse import urlencode, urlunparse
+from urllib.request import Request, urlopen
+
+
+SYNCTHING_APP_CONFIG_DIR = Path.home() / "Library/Application Support/Syncthing"
+SYNCTHING_APP_CONFIG_PATH = SYNCTHING_APP_CONFIG_DIR / "config.xml"
+
+
+def main() -> int:
+	parser = argparse.ArgumentParser(
+		description="Trigger an instant Syncthing rescan for a folder or subfolder.",
+	)
+	parser.add_argument("path", type=Path, nargs="?", default=Path.cwd(), help="Path to the synced folder or a subfolder within it (default: cwd).")
+	args = parser.parse_args()
+
+	what_to_sync_path = args.path.resolve()
+
+	if not SYNCTHING_APP_CONFIG_PATH.is_file():
+		print(f"Error: Syncthing config not found at {SYNCTHING_APP_CONFIG_PATH}", file=sys.stderr)
+		return 1
+
+	root = ET.parse(SYNCTHING_APP_CONFIG_PATH).getroot()
+
+	api_key = root.findtext("gui/apikey", "")
+	if not api_key:
+		print(f"Error: Could not read Syncthing API key from {SYNCTHING_APP_CONFIG_PATH}", file=sys.stderr)
+		return 2
+
+	gui_address = root.findtext("gui/address", "127.0.0.1:8384")
+	gui_tls = root.find("gui").get("tls", "false") == "true"
+
+	# Build a map of normalized folder paths to their IDs.
+	sync_folders = {}
+	for folder in root.iter("folder"):
+		fpath = folder.get("path")
+		fid = folder.get("id")
+		if fpath and fid:
+			sync_folders[Path(fpath).resolve()] = fid
+
+	# Walk from what_to_sync_path upward to find the enclosing sync folder.
+	folder_id = None
+	sync_folder_path = None
+	sub_path = None
+	for candidate in [what_to_sync_path, *what_to_sync_path.parents]:
+		if candidate in sync_folders:
+			folder_id = sync_folders[candidate]
+			sync_folder_path = candidate
+			if candidate != what_to_sync_path:
+				sub_path = what_to_sync_path.relative_to(candidate)
+			break
+
+	if folder_id is None:
+		print(f"No Syncthing folder found matching {args.path!r} or any of its parent directories.", file=sys.stderr)
+		print("Make sure the path is inside a folder managed by Syncthing.", file=sys.stderr)
+		return 3
+
+	# Trigger the instant rescan.
+	query = {"folder": folder_id}
+	if sub_path is not None:
+		query["sub"] = str(sub_path)
+	scan_url = urlunparse((
+		"https" if gui_tls else "http",
+		gui_address,
+		"/rest/db/scan",
+		"",
+		urlencode(query),
+		"",
+	))
+
+	ssl_ctx = None
+	if gui_tls:
+		ssl_ctx = ssl.create_default_context(cafile=SYNCTHING_APP_CONFIG_DIR / "https-cert.pem")
+	urlopen(Request(scan_url, method="POST", headers={"X-API-Key": api_key}), context=ssl_ctx)
+
+	at_sub = f" at {sub_path}" if sub_path else ""
+	print(f"Rescan triggered for {folder_id} ({sync_folder_path}){at_sub}.")
+
+
+if __name__ == "__main__":
+	sys.exit(main())
