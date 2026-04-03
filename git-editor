@@ -1,0 +1,49 @@
+#!/bin/sh
+
+###
+### An editor wrapper that intelligently chooses between terminal and GUI editors.
+###
+
+main() {
+	try_exec_tty nvim "$@"
+	try_exec_gui code --wait "$@"
+	try_exec_gui codium --wait "$@"
+	try_exec_gui zed --wait "$@"
+	try_exec_gui subl --wait "$@"
+	try_exec_tty vim "$@"
+	try_exec_tty vi "$@"
+
+	echo "Error: No editor found"
+	exit 1
+}
+
+try_exec() {
+	command_name="$1"
+	shift
+	if ! command -v "$command_name" >/dev/null 2>&1; then
+		return
+	fi
+	exec "$command_name" "$@"
+}
+
+try_exec_tty() {
+	if [ "$HAS_TTY" != "1" ]; then
+		return
+	fi
+	try_exec "$@"
+}
+
+try_exec_gui() {
+	try_exec "$@"
+}
+
+set -e  # Exit immediately if any command returns non-zero status
+set -u  # Treat unset variables as errors
+
+HAS_TTY=0
+if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+	HAS_TTY=1
+	exec </dev/tty >/dev/tty 2>&1
+fi
+
+main "$@"
