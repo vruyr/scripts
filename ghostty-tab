@@ -1,0 +1,63 @@
+#!/usr/bin/env zsh
+
+set -o ERR_EXIT
+set -o NO_UNSET
+set -o PIPE_FAIL
+
+zmodload zsh/zutil
+
+typeset -a opt_w opt_i
+zparseopts -D -E w:=opt_w i:=opt_i
+
+#TODO Only the last value is captured. Multiple of the same option is not cumulative. Make it cumulative.
+
+workdir="${HOME}"
+if (( ${#opt_w} )); then
+	workdir="${opt_w[2]}"
+fi
+
+the_input=""
+if (( ${#opt_i} )); then
+	typeset -a input_values
+	for ((i=2; i<=${#opt_i}; i+=2)); do
+		input_values+=("${opt_i[i]}")
+	done
+	the_input="${(F)input_values}"
+	unset input_values
+fi
+
+terminal_id=$(osascript - "$workdir" <<-'APPLESCRIPT'
+	on run argv
+		set workdir to item 1 of argv
+
+		tell application id "com.mitchellh.ghostty"
+			set cfg to new surface configuration
+			set initial working directory of cfg to workdir
+
+			if (count of windows) = 0 then
+				set theWindow to new window with configuration cfg
+				set theTab to selected tab of theWindow
+			else
+				set theTab to new tab in first window with configuration cfg
+			end if
+
+			return id of focused terminal of theTab
+		end tell
+	end run
+APPLESCRIPT
+)
+
+if [[ -n "$the_input" ]]; then
+	sleep 0.1
+
+	osascript - "$terminal_id" "$the_input" <<-'APPLESCRIPT'
+		on run argv
+			set terminalId to item 1 of argv
+			set theInput to item 2 of argv
+
+			tell application id "com.mitchellh.ghostty"
+				input text theInput to terminal id terminalId
+			end tell
+		end run
+	APPLESCRIPT
+fi
