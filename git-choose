@@ -1,0 +1,119 @@
+#!/usr/bin/env zsh
+#
+# git-choose — interactively select a repo and branch from configured URL prefixes.
+#
+# URL prefixes are discovered via git's url.<path>.insteadOf rewrite config.
+# Only prefixes matching a configured scheme (choose.scheme, multi-value) are considered.
+# Each prefix maps a URL scheme (e.g. sync://<remote>/, gitbundles://<remote>/) to a
+# local directory, which is scanned for bare repos (*.git dirs) and bundle files.
+#
+# Subcommands:
+#   list    Print all available URLs and exit.
+#   clone   Interactively pick a repo and branch, then run git clone.
+#   remote  Interactively pick one or more repos, then run git remote add for each.
+#   (none)  Interactively pick a repo and branch, then print remote/url/branch.
+#
+# Configuration example:
+#   [choose]
+#       scheme = sync
+#       scheme = gitbundles
+
+function choose() {
+
+	local subcommand="$1"
+	[[ $# -gt 0 ]] && shift
+
+	case "$subcommand" in
+		clone|remote|list|'') ;;
+		*) echo "Usage: $0:t [clone|remote|list]" >&2; return 1 ;;
+	esac
+
+	local -a schemes
+	schemes=(${(@f)"$(git config get --all choose.scheme 2>/dev/null)"})
+	if [[ ${#schemes} -eq 0 ]]; then
+		echo "$0:t: no schemes configured; add choose.scheme entries to git config" >&2
+		return 1
+	fi
+	local scheme_pattern="${(j:|:)schemes}"
+
+	typeset -A path_for_url_prefix
+	typeset -A remote_for_url_prefix
+
+	local c
+	for c in ${(@0):-"$(git config get --all --regex --show-name --null 'url\..*\.insteadof')"}; do
+		local key="${c%%$'\n'*}"
+		local value="${c#*$'\n'}"
+
+		local repo_path_prefix="${${key#url.}%.insteadof}"
+		local url_prefix="$value"
+
+		if [[ "$url_prefix" =~ "(${scheme_pattern})://([^/]*)/" ]]; then
+			path_for_url_prefix[$url_prefix]="$repo_path_prefix"
+			remote_for_url_prefix[$url_prefix]="${match[2]}"
+		fi
+	done
+
+	[[ ${#path_for_url_prefix} -gt 0 ]] || remote
+
+	local repo_entries=()
+	local up rpp repo
+	for up in ${(k)path_for_url_prefix}; do
+		rpp="${path_for_url_prefix[$up]}"
+		while IFS= read -r repo; do
+			[[ -n "$repo" ]] || continue
+			repo_entries+=("${up}${repo}"$'\t'"${rpp}/${repo}"$'\t'"${remote_for_url_prefix[$up]}")
+		done < <(cd "$rpp" && { fd -g -td '*.git'; fd -tf --exclude '*.git' } | sort -u | sed -E 's|/$||')
+	done
+
+	[[ ${#repo_entries} -gt 0 ]] || return 1
+
+	if [[ "$subcommand" == list ]]; then
+		printf '%s\n' "${repo_entries[@]%%$'\t'*}"
+		return
+	fi
+
+	local -a fzf_extra=()
+	[[ "$subcommand" == remote ]] && fzf_extra=(--multi)
+
+	local -a selected
+	selected=("${(@f)$(printf '%s\n' "${repo_entries[@]}" | \
+		fzf --reverse --height=-10 --delimiter=$'\t' --with-nth=1 --preview 'git-repo-info {2}' "${fzf_extra[@]}")}");
+
+	[[ ${#selected} -gt 0 ]] || return 1;
+
+	case "$subcommand" in
+		clone|'')
+			local repo_url="${selected[1]%%$'\t'*}"
+			local remote_name="${selected[1]##*$'\t'}"
+			local branch_ref="$(git ls-remote --branches "$repo_url" | fzf --reverse --height=~100% --delimiter=$'\t' --accept-nth=2 --select-1)";
+			[[ -n "$branch_ref" ]] || return 1;
+			local branch="${branch_ref#refs/heads/}"
+			if [[ -z "$subcommand" ]]; then
+				print "remote:\t$remote_name"
+				print "url:\t$repo_url"
+				print "branch:\t$branch"
+			else
+				git clone -b "$branch" -o "$remote_name" "$repo_url" "$@"
+			fi
+			;;
+		remote)
+			local -a existing_remotes
+			existing_remotes=("${(@f)$(git remote)}")
+			local line
+			for line in "${selected[@]}"; do
+				local repo_url="${line%%$'\t'*}"
+				local remote_name="${line##*$'\t'}"
+				local unique_name="$remote_name"
+				local n=0
+				while (( ${existing_remotes[(Ie)$unique_name]} )); do
+					(( ++n ))
+					unique_name="${remote_name}-${n}"
+				done
+				git remote add "$unique_name" "$repo_url"
+				existing_remotes+=("$unique_name")
+			done
+			;;
+	esac
+}
+
+choose "$@"
