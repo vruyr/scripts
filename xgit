@@ -1,0 +1,54 @@
+#!/usr/bin/env -S uv --quiet run --no-project --script --
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+#   "pygit2>=1.19.2",
+# ]
+# ///
+
+import sys, os
+from pathlib import Path
+
+import pygit2
+
+
+def main():
+	xgit_dir = Path("~/.xgit").expanduser()
+	if not xgit_dir.is_dir():
+		print(f"ERROR: {xgit_dir} does not exist.", file=sys.stderr)
+		return 1
+
+	cwd = Path.cwd().absolute()
+	cwd_parts = cwd.parts
+	matches = []
+
+	for git_dir in sorted(xgit_dir.iterdir()):
+		if not git_dir.is_dir():
+			continue
+		config_path = git_dir / "config"
+		try:
+			config = pygit2.Config(str(config_path))
+			worktree = config["core.worktree"]
+		except (KeyError, pygit2.GitError):
+			print(f"WARNING: {config_path}: could not read core.worktree, skipping.", file=sys.stderr)
+			continue
+		worktree_parts = Path(worktree).expanduser().absolute().parts
+		if cwd_parts[:len(worktree_parts)] == worktree_parts:
+			matches.append(git_dir)
+
+	if len(matches) == 0:
+		print("ERROR: no matching git dir found for the current directory.", file=sys.stderr)
+		return 2
+	if len(matches) > 1:
+		print("ERROR: ambiguous - multiple git dirs match the current directory:", file=sys.stderr)
+		for m in matches:
+			print(f"  {m}", file=sys.stderr)
+		return 3
+
+	os.execvp("git", ["git", "--git-dir", str(matches[0]), *sys.argv[1:]])
+
+
+if __name__ == "__main__":
+	sys.exit(main())
