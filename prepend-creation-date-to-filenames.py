@@ -1,4 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv --quiet run --no-project --script --
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+# ]
+# ///
 
 import sys, pathlib, os, datetime
 
@@ -19,7 +26,6 @@ def main(args):
 	for p, pp in renames:
 		p.rename(pp)
 		print(f"{p} -> {pp}")
-
 
 
 if __name__ == "__main__":

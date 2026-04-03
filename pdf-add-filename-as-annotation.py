@@ -1,4 +1,12 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv --quiet run --no-project --script --
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+#   "pdf-annotate >=0.12.0",
+# ]
+# ///
 
 import sys, pathlib, subprocess
 # https://github.com/plangrid/pdf-annotate

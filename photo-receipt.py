@@ -1,11 +1,17 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv --quiet run --no-project --script --
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+#   "timezonefinder >=3.0.1",
+#   "python-dateutil >=2.7.2",
+# ]
+# ///
 
 # Python Standard Library
-import sys; assert sys.version_info[:2] in [(3, 6), (3, 7), (3, 8)]
 import asyncio, subprocess, json, re, datetime
-# pip install 'timezonefinder>=3.0.1'
 import timezonefinder
-# pip install 'python-dateutil>=2.7.2'
 import dateutil.tz
 
 

@@ -1,8 +1,14 @@
-#!/usr/bin/env python3
-# Python Standard Library
-import sys; assert sys.version_info[:2] in [(3, 6)]
-import asyncio, os, shutil, itertools, plistlib, json
-# pip install xattr
+#!/usr/bin/env -S uv --quiet run --no-project --script --
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+#   "xattr >=1.3.0",
+# ]
+# ///
+
+import sys, asyncio, os, shutil, itertools, plistlib, json
 import xattr
 
 

@@ -1,8 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv --quiet run --no-project --script --
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+# ]
+# ///
 
-from __future__ import print_function
-import sys; assert sys.version_info[:2] in [(3, 5), (3, 6)]
-import email, email.utils, pathlib, os
+import sys, email, email.utils, pathlib, os
 
 
 def main(args):

@@ -1,4 +1,14 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv --quiet run --no-project --script --
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# # Docopt issues SyntaxWarning in Python 3.12
+# requires-python = ">=3.11,<3.12"
+# dependencies = [
+#   "python-dateutil",
+#   "docopt",
+# ]
+# ///
 
 """
 Usage:
@@ -14,9 +24,7 @@ Date/Time Conversion:
 """
 
 import sys, datetime
-# pip install python-dateutul
 import dateutil.parser
-# pip install docopt
 import docopt
 
 

@@ -1,4 +1,12 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv --quiet run --no-project --script --
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+#   "pytz >=2022.1",
+# ]
+# ///
 
 """
 Description
@@ -7,7 +15,6 @@ Description
 from ast import DictComp
 from multiprocessing import context
 import sys, locale, argparse, pathlib, urllib.parse, contextlib, sqlite3, datetime
-# pip install pytz==2022.1
 import pytz
 
 

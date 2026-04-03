@@ -1,4 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv --quiet run --no-project --script --
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# # Docopt issues SyntaxWarning in Python 3.12
+# requires-python = ">=3.11,<3.12"
+# dependencies = [
+#   "docopt >=0.6.2",
+# ]
+# ///
 
 """
 Usage:
@@ -11,7 +20,6 @@ Options:
 """
 
 import sys, locale, os, urllib.parse, json, collections
-# pip install docopt==0.6.2
 import docopt
 
 

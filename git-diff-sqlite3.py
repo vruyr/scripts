@@ -1,4 +1,14 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv --quiet run --no-project --script --
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# # Docopt issues SyntaxWarning in Python 3.12
+# requires-python = ">=3.11,<3.12"
+# dependencies = [
+#   "docopt >=0.6.2",
+#   "Pygments >=2.4.2,<3.0.0",
+# ]
+# ///
 
 """
 Usage:
@@ -7,7 +17,6 @@ Usage:
 
 
 import sys, locale, os, subprocess
-# pip install docopt==0.6.2
 import docopt
 
 
@@ -51,7 +60,6 @@ def main(*, args, prog):
 	)
 
 	if colorize:
-		# pip install 'Pygments>=2.4.2,<3.0.0'
 		import pygments, pygments.lexers, pygments.formatters
 		sys.stdout.write(pygments.highlight(
 			(

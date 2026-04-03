@@ -1,4 +1,15 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv --quiet run --no-project --script --
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# # Docopt issues SyntaxWarning in Python 3.12
+# requires-python = ">=3.11,<3.12"
+# dependencies = [
+#   "docopt >=0.6.2",
+#   "geoip2 >=4.0.2",
+#   "dateparser >=0.7.6",
+# ]
+# ///
 
 """
 Usage:
@@ -13,11 +24,8 @@ Options:
 """
 
 import sys, locale, asyncio, subprocess, os, socket, datetime, re, json
-# pip install docopt==0.6.2
 import docopt
-# pip install geoip2==4.0.2
 import geoip2.database
-# pip install dateparser==0.7.6
 import dateparser
 
 
