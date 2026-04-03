@@ -4,5 +4,5 @@ set -o errexit
 tmpfile=$(mktemp -t stdout-stdin)
 trap "rm \"$tmpfile\"" EXIT
 cat </dev/stdin >"$tmpfile"
-${EDITOR:-${VISUAL:-$(git config --get core.editor)}} "$tmpfile"
+${EDITOR:-${VISUAL:-$(git config --get core.editor)}} "$tmpfile" </dev/tty >/dev/tty 2>&1
 cat "$tmpfile"
