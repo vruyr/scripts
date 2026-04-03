@@ -1,0 +1,46 @@
+#!/usr/bin/env zsh
+
+setopt ERR_EXIT
+
+# Parse options
+commit_message="."
+branch_name=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -m|--message)
+            commit_message="$2"
+            shift 2
+            ;;
+        -b|--branch)
+            branch_name="$2"
+            shift 2
+            ;;
+        *)
+            echo "Error: Unknown argument '$1'" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$branch_name" ]]; then
+    branch_name="worktree-$(git rev-parse --short --verify HEAD)"
+fi
+
+parent_commit_sha="$(git rev-parse --verify 2>/dev/null "$branch_name" || git rev-parse --verify HEAD)"
+
+#TODO Implement support for without any `git add`, with `git add -u`, and with `git add -A`.
+
+# Capturing files added to index but not yet committed.
+old_index_tree="$(git write-tree)"
+
+# Create temporary index file and ensure cleanup
+temp_index="$(mktemp -t git-index-XXXXXX)"
+trap "rm -f '$temp_index'" EXIT ERR INT TERM
+
+export GIT_INDEX_FILE="$temp_index"
+git read-tree "$old_index_tree"
+git add -A
+worktree_tree_sha="$(git write-tree)"
+worktree_commit_sha="$(git commit-tree -p "$parent_commit_sha" -m "$commit_message" "$worktree_tree_sha")"
+git update-ref "refs/heads/$branch_name" "$worktree_commit_sha"
