@@ -1,0 +1,74 @@
+#!/usr/bin/env zsh
+# vim: set ft=zsh foldmethod=marker:
+
+set -o errexit      # exit on any non-zero
+set -o nounset      # error on unset variables
+set -o pipefail     # pipelines fail if any part fails
+
+main() {
+	local input_file="${1:-}"
+
+	[[ -z "$input_file" ]] && {
+		print -u2 "Usage: $0 <file>"
+		exit 64
+	}
+
+	typeset -a timg_args=(
+		"-g ${FZF_PREVIEW_COLUMNS:-$COLUMNS}x${FZF_PREVIEW_LINES:-$LINES}"
+		--fit-width
+		-E
+		# --pixelation=kitty
+		# "--upscale"
+		# "--center"
+		# "--title" "$input_file"
+	)
+
+	local display_file="$input_file"
+
+	if [[ -d "$input_file" ]]; then
+		ls -aF "$input_file"
+		return
+	elif [[ "$(file --brief --mime-type "$input_file")" == text/* ]]; then
+		cat "$input_file"
+		return
+	elif [[ ! "$input_file" =~ \.(png|jpg|jpeg|gif|webp)$ ]]; then
+		# Create cache directory
+		local cache_dir="${TMPDIR:-/tmp}/qlcat-cache"
+		mkdir -p "$cache_dir"
+
+		# Generate stable cache filename based on absolute path hash
+		local abs_path="${input_file:a}"
+		local path_hash="${$(shasum -a 256 <<<$abs_path)%% *}"
+		local cache_file="$cache_dir/${path_hash}.png"
+
+		# Generate preview only if cache doesn't exist
+		if [[ ! -f "$cache_file" ]]; then
+			qlmanage -t -s 2048 -o "$cache_dir" "$input_file" 2>/dev/null
+			local thumbnails=("$cache_dir"/*.png(N))
+			if [[ ${#thumbnails[@]} -gt 0 ]]; then
+				mv "${thumbnails[-1]}" "$cache_file"
+			fi
+		fi
+
+		# Use cached thumbnail if it exists
+		[[ -f "$cache_file" ]] && display_file="$cache_file"
+	fi
+
+	timg "${timg_args[@]}" "$display_file"
+}
+
+err() {
+	printf '\n\e[31;1mError\e[0m %s\n' "$*" >&2
+	exit 1
+}
+
+cleanup() {
+	# rm temp files, kill jobs, etc.
+	:
+}
+trap cleanup EXIT INT TERM
+
+
+if [[ "${(%):-%N}" = "${(%):-%x}" ]]; then
+	main "$@"
+fi
