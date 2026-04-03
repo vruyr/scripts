@@ -5,6 +5,21 @@ set -o errexit
 hash BetterDisplay="$(osascript -e 'tell application "System Events" to return POSIX path of application file of first process whose bundle identifier is "pro.betterdisplay.BetterDisplay"')/Contents/MacOS/BetterDisplay"
 hash jq="${${:-"jq"}:c}"
 
+# Load display overrides from config file
+typeset -A display_name_overrides
+typeset -A alphanumeric_serial_overrides
+overrides_file=~/.config/${0:a:t}/overrides.json
+if [[ -f "$overrides_file" ]]; then
+	while IFS= read -r line; do
+		key="${line%%$'\t'*}"
+		values="${line#*$'\t'}"
+		name="${values%%$'\t'*}"
+		serial="${values#*$'\t'}"
+		display_name_overrides[$key]="$name"
+		alphanumeric_serial_overrides[$key]="$serial"
+	done < <(jq -r 'to_entries | .[] | "\(.key)\t\(.value.name)\t\(.value.alphanumericSerial)"' "$overrides_file")
+fi
+
 for param in -autoBrightness -nightShift -trueTone; do
 	printf '%s %s\n' "$param" "$(BetterDisplay 2>&1 get "$param")"
 done
@@ -16,13 +31,14 @@ for display in "${(@f)"$(BetterDisplay get -identifiers | sed 's/},{/}\n{/' | jq
 		-model="$(jq -r <<<"$display" .model)"
 		-serial="$(jq -r <<<"$display" .serial)"
 	)
-	display_label="$(jq <<<"$display" -r '"\(.name) \(.alphanumericSerial)"') (${(j: :)display_selector[@]})"
-	if [ "$#" -ge 1 ]; then
-		if [[ "$display_label" = *"$1"* ]]; then
-			:
-		else
-			continue
-		fi
+
+	display_key="$(jq <<<"$display" -r '"\(.vendor):\(.model):\(.serial)"')"
+	display_name="${display_name_overrides[$display_key]:-$(jq <<<"$display" -r .name)}"
+	alphanumeric_serial="${alphanumeric_serial_overrides[$display_key]:-$(jq <<<"$display" -r .alphanumericSerial)}"
+	display_label="$display_name $alphanumeric_serial (${(j: :)display_selector[@]})"
+
+	if [[ $# -ge 1 && "$display_label" != *"$1"* ]]; then
+		continue
 	fi
 
 	printf '%s\n' "$display_label"
