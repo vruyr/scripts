@@ -23,19 +23,7 @@ cd "$1"
 	typeset -g USE_COLORS=""
 
 	if [[ -n "${FZF_PREVIEW_COLUMNS}" ]]; then
-		# The stty command hangs from inside fzf preview window when trying to set raw mode.
-		# Use COLORFGBG to decide light/dark.
-		[[ -n "${COLORFGBG}" ]] || return;
-		local bg_color="${COLORFGBG##*;}"
-		if [[ "$bg_color" =~ ^[0-9]+$ ]]; then
-			# Color indices 0-7 are typically dark backgrounds
-			# Color indices 8-15 are typically light backgrounds
-			if [[ $bg_color -ge 8 ]]; then
-				USE_COLORS=light
-			else
-				USE_COLORS=dark
-			fi
-		fi
+		# stty hangs inside fzf preview; OSC 11 query is not available.
 		return
 	fi
 
@@ -131,8 +119,8 @@ function the_bat() {
 		--paging=never \
 		--style=numbers \
 		--decorations always \
-		${USE_COLORS:+--color=always} \
-		${USE_COLORS:+--theme="$USE_COLORS"} \
+		--color=always \
+		--theme=auto \
 		"$@"
 }
 
