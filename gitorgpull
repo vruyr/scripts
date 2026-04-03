@@ -1,0 +1,192 @@
+#!/usr/bin/env zsh
+
+set -o ERR_EXIT
+
+# Check for configuration file
+config_file=".gitorgpull.json"
+if [[ ! -f "$config_file" ]]; then
+	printf 'Configuration file not found: %s\n' "$config_file" >&2
+	exit 1
+fi
+
+# Parse command-line options
+list_mode=0
+if [[ "$1" == "--list" || "$1" == "-l" ]]; then
+	list_mode=1
+fi
+
+# List mode - show organizations and exit
+declare -a partial_repos=()
+if (( list_mode )); then
+	printf '%-30s %s\n' 'ORGANIZATION' 'TYPE'
+	printf '%-30s %s\n' '------------' '----'
+	for org in *(/N); do
+		if [[ -f "$org/.partial" ]]; then
+			partial_repos+=( "$(printf '%-30s %s\n' "$org" 'PARTIAL')" )
+		else
+			printf '%-30s %s\n' "$org" 'FULL'
+		fi
+	done
+	for partial in "${partial_repos[@]}"; do
+		printf '%s\n' "$partial"
+	done
+	exit 0
+fi
+
+# Resolve and validate required dependencies
+UV_BIN="$(command -v uv)" || { printf 'Required command not found: uv\n' >&2; exit 1; }
+JQ_BIN="$(command -v jq)" || { printf 'Required command not found: jq\n' >&2; exit 1; }
+GIT_BIN="$(command -v git)" || { printf 'Required command not found: git\n' >&2; exit 1; }
+GH_BIN="$(command -v gh)" || { printf 'Required command not found: gh\n' >&2; exit 1; }
+RG_BIN="$(command -v rg)" || { printf 'Required command not found: rg\n' >&2; exit 1; }
+
+# Read configuration
+GH_HOST="$("$JQ_BIN" -r '.gh_host' "$config_file")" || { printf 'Failed to read gh_host from config\n' >&2; exit 1; }
+CLONE_REMOTE_NAME="$("$JQ_BIN" -r '.clone_remote_name // "origin"' "$config_file")"
+
+# Validate configuration values
+if [[ -z "$GH_HOST" || "$GH_HOST" == "null" ]]; then
+	printf 'Invalid or missing gh_host in config\n' >&2
+	exit 1
+fi
+
+# Export for gh CLI and construct URL prefix
+export GH_HOST
+URL_PREFIX="https://${GH_HOST}"
+
+STYLE_RESET=$'\e[0m'
+STYLE_ERROR=$'\e[31m'
+STYLE_CLONE=$'\e[32m'
+STYLE_FETCH=$'\e[36m'
+STYLE_SUCCESS=$'\e[32m'
+
+# Track statistics
+declare -i success_count=0
+declare -i error_count=0
+declare -a failed_repos=()
+
+function find_remote_for_org() {
+	local org_and_repo="$1"
+
+	for remote_name in "${(@f)$("$GIT_BIN" -C "$org_and_repo" remote)}"; do
+		local remote_url
+		remote_url="$("$GIT_BIN" -C "$org_and_repo" remote get-url "$remote_name")"
+
+		# Normalize git@host:path URLs to ssh://git@host/path
+		local normalized_url="$remote_url"
+		if [[ "$normalized_url" == git@* ]]; then
+			normalized_url="${normalized_url/:/\/}"
+			normalized_url="ssh://${normalized_url#git@}"
+		fi
+
+		local parsed
+		parsed="$("$UV_BIN" run --python 3 python -c 'import sys, urllib.parse, json; u = urllib.parse.urlsplit(sys.argv[1]); print(json.dumps({"hostname": u.hostname, "path": u.path}))' "$normalized_url")"
+
+		local url_host url_path
+		url_host="$("$JQ_BIN" -r '.hostname' <<<"$parsed")"
+		url_path="$("$JQ_BIN" -r '.path' <<<"$parsed")"
+
+		# Extract org/repo from path
+		local url_org_repo="${url_path#/}"     # Remove leading /
+		url_org_repo="${url_org_repo%.git}"    # Remove .git suffix if present
+
+		# Match host and org/repo
+		if [[ "$url_host" == "$GH_HOST" && "$url_org_repo" == "$org_and_repo" ]]; then
+			echo "$remote_name"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+function fetch_and_merge() {
+	local org_and_repo="$1"
+	local url="$2"
+
+	printf_with_style "$STYLE_FETCH" 'Updating: %s\n' "$org_and_repo"
+
+	# Find the remote matching our gh_host and org
+	local remote_name
+	if ! remote_name="$(find_remote_for_org "$org_and_repo")"; then
+		printf_with_style "$STYLE_ERROR" "No remote found for %s on host %s\n" "$org_and_repo" "$GH_HOST"
+		return 1
+	fi
+
+	"$GIT_BIN" -C "$org_and_repo" remote set-head "$remote_name" -d
+
+	branch_to_pull="$("$GIT_BIN" -C "$org_and_repo" ls-remote --symref "$remote_name" HEAD | "$RG_BIN" -oP '(?<=^ref: refs/heads/).*(?=\tHEAD$)')"
+
+	if [[ -z "$branch_to_pull" ]]; then
+		printf_with_style "$STYLE_ERROR" "Could not determine default branch for: %s\n" "$org_and_repo"
+		return 1
+	fi
+
+	"$GIT_BIN" -C "$org_and_repo" pull --ff-only "$remote_name" "$branch_to_pull":"$branch_to_pull"
+}
+
+function printf_with_style() {
+	local style="$1"
+	shift
+	printf '%s' "$style"
+	printf "$@"
+	printf '%s' "$STYLE_RESET"
+}
+
+function update_repo() {
+	local org_and_repo="$1"
+	local url="$2"
+
+	# Run in subshell to isolate errors from ERR_EXIT
+	if ( fetch_and_merge "$org_and_repo" "$url" ); then
+		(( success_count++ )) || true
+	else
+		(( error_count++ )) || true
+		failed_repos+=("$org_and_repo")
+	fi
+}
+
+function clone_repo() {
+	local org_and_repo="$1"
+	local url="$2"
+
+	printf_with_style "$STYLE_CLONE" 'Cloning: %s\n' "$org_and_repo"
+
+	if ( "$GIT_BIN" clone "$url" --origin "$CLONE_REMOTE_NAME" --single-branch "$org_and_repo" ); then
+		(( success_count++ )) || true
+	else
+		(( error_count++ )) || true
+		failed_repos+=("$org_and_repo")
+		printf_with_style "$STYLE_ERROR" "Failed to clone: %s\n" "$org_and_repo"
+	fi
+}
+
+for org in *(/N); do
+	if [[ -f "$org/.partial" ]]; then
+		for org_repo in "$org"/*(/N); do
+			update_repo "$org_repo"
+		done
+		continue
+	fi
+
+	while IFS=$'\t' read repo url; do
+		if [[ -d "$org/$repo" ]]; then
+			update_repo "$org/$repo" "$url"
+		else
+			clone_repo "$org/$repo" "$url"
+		fi
+	done < <("$GH_BIN" repo list "$org" --json name,url --jq '.[]|.name + "\t" + .url + ".git"')
+done
+
+# Print summary
+printf '\n'
+if (( error_count > 0 )); then
+	printf_with_style "$STYLE_ERROR" 'Completed with errors: %d succeeded, %d failed\n' "$success_count" "$error_count"
+	printf_with_style "$STYLE_ERROR" 'Failed repositories:\n'
+	for repo in "${failed_repos[@]}"; do
+		printf '  - %s\n' "$repo"
+	done
+	exit 1
+else
+	printf_with_style "$STYLE_SUCCESS" 'All operations successful: %d repositories processed\n' "$success_count"
+fi
