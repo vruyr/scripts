@@ -5,6 +5,12 @@
 ###
 
 main() {
+	# Special Cases
+	if [ "$TERM_PROGRAM" = "vscode" ]; then
+		try_exec_gui code --wait "$@"
+	fi
+
+	# Generic Order
 	try_exec_tty nvim "$@"
 	try_exec_gui code --wait "$@"
 	try_exec_gui codium --wait "$@"
