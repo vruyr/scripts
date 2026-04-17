@@ -34,11 +34,11 @@ if (( list_mode )); then
 fi
 
 # Resolve and validate required dependencies
-UV_BIN="$(command -v uv)" || { printf 'Required command not found: uv\n' >&2; exit 1; }
-JQ_BIN="$(command -v jq)" || { printf 'Required command not found: jq\n' >&2; exit 1; }
-GIT_BIN="$(command -v git)" || { printf 'Required command not found: git\n' >&2; exit 1; }
-GH_BIN="$(command -v gh)" || { printf 'Required command not found: gh\n' >&2; exit 1; }
-RG_BIN="$(command -v rg)" || { printf 'Required command not found: rg\n' >&2; exit 1; }
+UV_BIN="$(whence -p uv)" || { printf 'Required command not found: uv\n' >&2; exit 1; }
+JQ_BIN="$(whence -p jq)" || { printf 'Required command not found: jq\n' >&2; exit 1; }
+GIT_BIN="$(whence -p git)" || { printf 'Required command not found: git\n' >&2; exit 1; }
+GH_BIN="$(whence -p gh)" || { printf 'Required command not found: gh\n' >&2; exit 1; }
+RG_BIN="$(whence -p rg)" || { printf 'Required command not found: rg\n' >&2; exit 1; }
 
 # Read configuration
 GH_HOST="$("$JQ_BIN" -r '.gh_host' "$config_file")" || { printf 'Failed to read gh_host from config\n' >&2; exit 1; }

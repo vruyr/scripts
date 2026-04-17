@@ -12,10 +12,10 @@ youtube-search () {
 
 	local num_results=${num_results_opt[-1]:-0}
 
-	local cmd_uv="$(command -v uv 2>/dev/null)"
+	local cmd_uv="$(whence -p uv 2>/dev/null)"
 	[[ -n "$cmd_uv" ]] || { print -u2 "youtube-search: missing dependency: uv"; return 1; }
 
-	local cmd_deno="$(command -v deno 2>/dev/null)"
+	local cmd_deno="$(whence -p deno 2>/dev/null)"
 	local -a js_opts=()
 	[[ -n "$cmd_deno" ]] && js_opts=(--js-runtimes "deno:${cmd_deno}" --remote-components ejs:github)
 
@@ -43,10 +43,10 @@ youtube-search () {
 	local yt_cmd=("$cmd_uv" tool run -q yt-dlp@latest --skip-download --quiet --lazy-playlist "${js_opts[@]}" "${extra_opts[@]}" --print "$output_format" "$source")
 
 	if [[ -n "$use_thumbnails" ]]; then
-		local cmd_timg="$(command -v timg 2>/dev/null)"
-		local cmd_curl="$(command -v curl 2>/dev/null)"
-		local cmd_sips="$(command -v sips 2>/dev/null)"
-		local cmd_awk="$(command -v awk 2>/dev/null)"
+		local cmd_timg="$(whence -p timg 2>/dev/null)"
+		local cmd_curl="$(whence -p curl 2>/dev/null)"
+		local cmd_sips="$(whence -p sips 2>/dev/null)"
+		local cmd_awk="$(whence -p awk 2>/dev/null)"
 		[[ -n "$cmd_timg" ]] || { print -u2 "youtube-search: missing dependency: timg"; return 1; }
 		[[ -n "$cmd_curl" ]] || { print -u2 "youtube-search: missing dependency: curl"; return 1; }
 		[[ -n "$cmd_sips" ]] || { print -u2 "youtube-search: missing dependency: sips"; return 1; }
@@ -164,7 +164,7 @@ print('─' * width)
 		fzf_height="50%"
 	fi
 
-	local cmd_fzf="$(command -v fzf 2>/dev/null)"
+	local cmd_fzf="$(whence -p fzf 2>/dev/null)"
 	[[ -z "$use_fzf" || -n "$cmd_fzf" ]] || { print -u2 "youtube-search: missing dependency: fzf"; return 1; }
 
 	if [[ -n "$use_fzf" ]]; then
