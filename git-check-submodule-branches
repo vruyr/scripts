@@ -1,0 +1,182 @@
+#!/bin/sh
+"exec" "uv" "--quiet" "run" "--no-project" "--script" "--" "$0" "$@"
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+#   "pygit2 >=1.15",
+# ]
+# ///
+
+__doc__ = """
+Resolve relative submodule URLs the way `git submodule` does.
+Mirrors git's submodule.c::relative_url().
+"""
+
+import argparse, posixpath, subprocess
+from pathlib import Path, PurePosixPath
+from urllib.parse import urlparse, urlunparse
+
+import pygit2
+
+
+def main(*, repo_path, show_urls):
+	rows = list(walk(pygit2.Repository(str(repo_path))))
+	w_status = max((len(r[3]) for r in rows), default=0)
+	w_actual = max((len(r[4]) for r in rows), default=0)
+	w_path = max((len(r[0]) for r in rows), default=0) if show_urls else 0
+	for path, expected_branch, resolved, status, actual in rows:
+		line = f"{status:<{w_status}}  {actual:<{w_actual}}  {path:<{w_path}}"
+		if show_urls:
+			line += f"  {expected_branch or '?'} of {resolved}"
+		print(line.rstrip())
+
+
+def walk(repo, prefix="", parent_branch=None):
+	base = default_remote_url(repo)
+	cur_branch = current_branch(repo)
+	for name in repo.listall_submodules():
+		sm = repo.submodules[name]
+		path = prefix + sm.path
+		resolved = relative_url(base, sm.url)
+		expected = submodule_branch(sm, parent_branch) or remote_head(resolved)
+		sub_path = Path(repo.workdir) / sm.path
+		sub = pygit2.Repository(str(sub_path)) if (sub_path / ".git").exists() else None
+		status, detail = inspect(sub, expected, resolved)
+		yield path, expected, resolved, status, detail
+		if sub is not None:
+			yield from walk(sub, path + "/", cur_branch)
+
+
+def inspect(sub, expected_branch, expected_url):
+	"""Classify the submodule's HEAD and tracking config against expectations."""
+	if sub is None:
+		return "MISSING", "(missing)"
+	if sub.head_is_unborn:
+		return "UNBORN", "(unborn)"
+	if sub.head_is_detached:
+		return "DETACHED", f"(detached {str(sub.head.target)[:7]})"
+	cur = sub.head.shorthand
+	cfg = sub.config
+	try:
+		remote = cfg[f"branch.{cur}.remote"]
+		merge = cfg[f"branch.{cur}.merge"]
+		url = cfg[f"remote.{remote}.url"]
+		actual = f"{remote}/{merge.removeprefix('refs/heads/')}"
+	except KeyError:
+		remote = merge = url = None
+		actual = cur
+	if expected_branch is None:
+		return "UNKNOWN_WANT", actual
+	if cur != expected_branch:
+		return "WRONG_BRANCH", actual
+	if remote is None:
+		return "NO_UPSTREAM", actual
+	if url != expected_url or merge != f"refs/heads/{expected_branch}":
+		return "WRONG_UPSTREAM", actual
+	return "OK", actual
+
+
+def current_branch(repo):
+	if repo.head_is_unborn or repo.head_is_detached:
+		return None
+	return repo.head.shorthand
+
+
+def submodule_branch(sm, parent_branch):
+	"""Value of submodule.<name>.branch in .gitmodules; "." means parent's."""
+	try:
+		branch = sm.branch
+	except RuntimeError:
+		return None  # pygit2 raises when the key is unset
+	return parent_branch if branch == "." else (branch or None)
+
+
+def remote_head(url):
+	"""Branch pointed to by HEAD on the remote, via `git ls-remote --symref`."""
+	r = subprocess.run(
+		["git", "ls-remote", "--symref", url, "HEAD"],
+		capture_output=True, text=True,
+	)
+	if r.returncode != 0:
+		return None
+	for line in r.stdout.splitlines():
+		if line.startswith("ref: ") and "\tHEAD" in line:
+			ref = line[len("ref: "):].split("\t", 1)[0]
+			return ref.removeprefix("refs/heads/")
+	return None
+
+
+def default_remote_url(repo):
+	"""Tracked remote of current branch, else `origin`, else the worktree."""
+	cfg = repo.config
+	remote = "origin"
+	if not repo.head_is_unborn and not repo.head_is_detached:
+		try:
+			remote = cfg[f"branch.{repo.head.shorthand}.remote"]
+		except KeyError:
+			pass
+	try:
+		return cfg[f"remote.{remote}.url"]
+	except KeyError:
+		return repo.workdir
+
+
+def relative_url(base, url):
+	if not url.startswith(("./", "../")):
+		return url
+	# scp-style ssh: host:path (colon before any slash, not "://")
+	c, s = base.find(":"), base.find("/")
+	if c != -1 and (s == -1 or c < s) and base[c : c + 3] != "://":
+		host, _, path = base.partition(":")
+		return f"{host}:{_join(path, url)}"
+	parsed = urlparse(base)
+	if parsed.scheme:
+		return urlunparse(parsed._replace(path=_join(parsed.path, url)))
+	return _join(base, url)
+
+
+def _join(path, url):
+	return posixpath.normpath(str(PurePosixPath(path or ".") / url))
+
+
+def _test_relative_url():
+	cases = [
+		("https://github.com/a/super.git", "../foo.git",  "https://github.com/a/foo.git"),
+		("https://github.com/a/super.git", "./foo.git",   "https://github.com/a/super.git/foo.git"),
+		("git@github.com:a/super.git",     "../foo.git",  "git@github.com:a/foo.git"),
+		("git@github.com:a/super.git",     "../../x.git", "git@github.com:x.git"),
+		("/path/to/super",                 "../foo",      "/path/to/foo"),
+		("./super",                        "../foo",      "foo"),
+		(".",                              "../foo",      "../foo"),
+		("./a/b",                          "../../../x",  "../x"),
+		("https://x/y/z.git",              "foo.git",     "foo.git"),
+	]
+	failures = 0
+	for base, url, expect in cases:
+		got = relative_url(base, url)
+		ok = got == expect
+		failures += not ok
+		print(f"{'ok  ' if ok else 'FAIL'} relative_url({base!r}, {url!r}) = {got!r}  expect {expect!r}")
+	if failures:
+		raise SystemExit(f"{failures} failure(s)")
+
+
+if __name__ == "__main__":
+	ap = argparse.ArgumentParser(description=__doc__)
+	ap.add_argument("-C", "--repo", dest="repo_path", type=Path, default=Path.cwd())
+	ap.add_argument("--show-urls", action="store_true",
+					help="Append the expected url#branch for each submodule.")
+	ap.add_argument("--test", metavar="NAME", nargs="?", const="",
+					help="Run _test_<NAME> (or all _test_* with no NAME) and exit.")
+	args = ap.parse_args()
+	if args.test is not None:
+		names = [args.test] if args.test else [
+			n[len("_test_"):] for n in sorted(globals()) if n.startswith("_test_")
+		]
+		for name in names:
+			print(f"# _test_{name}")
+			globals()[f"_test_{name}"]()
+	else:
+		main(repo_path=args.repo_path, show_urls=args.show_urls)
