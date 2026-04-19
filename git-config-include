@@ -1,0 +1,88 @@
+#!/bin/sh
+"exec" "uv" "--quiet" "run" "--no-project" "--script" "--" "$0" "$@"
+# vim: ft=python ts=4 sw=4 noet:
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+# ]
+# ///
+
+__doc__ = """
+Idempotently append an `include.path` entry to the local git config,
+stored as a path relative to the config file. Any existing entries that
+resolve to the same target file are removed first.
+"""
+
+import argparse, os, subprocess, sys
+from pathlib import Path
+
+
+def main(*, file_path):
+	try:
+		target = file_path.resolve(strict=True)
+		config_path = Path(run(
+			"git", "rev-parse", "--git-path", "config"
+		).stdout.strip()).resolve()
+		config_dir = config_path.parent
+
+		existing = run(
+			"git", "config", "get", "--local", "--all", "include.path",
+			allow=(0, 1),
+		).stdout.splitlines()
+
+		for value in sorted(set(existing)):
+			if resolve_include(config_dir, value) == target:
+				run(
+					"git", "config", "unset", "--local", "--all",
+					"--fixed-value", "--value", value, "include.path",
+				)
+
+		file_path_resolved = include_value(target, config_dir)
+		run(
+			"git", "config", "set", "--local", "--append",
+			"include.path", file_path_resolved
+		)
+		print(f"file:{config_path}\t{file_path_resolved}")
+	except CmdError as e:
+		sys.stderr.write(e.stderr)
+		return e.returncode
+	return 0
+
+
+def include_value(target, config_dir):
+	"""Prefers `core.worktree` verbatim when target is inside that worktree."""
+	worktree = run(
+		"git", "config", "get", "--local", "core.worktree", allow=(0, 1),
+	).stdout.rstrip("\n")
+	if worktree:
+		worktree_abs = (config_dir / Path(worktree).expanduser()).resolve()
+		if target.is_relative_to(worktree_abs):
+			return f"{worktree}/{target.relative_to(worktree_abs)}"
+	return os.path.relpath(target, config_dir)
+
+
+def resolve_include(config_dir, value):
+	return (config_dir / Path(value).expanduser()).resolve()
+
+
+def run(*cmd, allow=(0,)):
+	r = subprocess.run(cmd, text=True, capture_output=True)
+	if r.returncode not in allow:
+		raise CmdError(r.returncode, r.stderr)
+	return r
+
+
+class CmdError(Exception):
+	def __init__(self, returncode, stderr):
+		self.returncode = returncode
+		self.stderr = stderr
+
+
+if __name__ == "__main__":
+	ap = argparse.ArgumentParser(description=__doc__)
+	ap.add_argument("file_path", metavar="PATH", type=Path,
+					help="File to include from git's local config.")
+	args = ap.parse_args()
+	sys.exit(main(**vars(args)))
