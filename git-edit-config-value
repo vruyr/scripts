@@ -1,0 +1,184 @@
+#!/bin/sh
+"exec" "uv" "--quiet" "run" "--no-project" "--script" "--" "$0" "$@"
+# vim: ft=python ts=4 sw=4 noet:
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+# ]
+# ///
+
+__doc__ = """
+Edit a git config value in $EDITOR. The origin file is detected via
+`git config --show-origin`, so the edit lands back in the same file
+the value came from.
+"""
+
+import argparse, enum, shlex, shutil, subprocess, sys, tempfile
+from pathlib import Path
+
+
+class ExitCode(enum.IntEnum):
+	OK = 0
+	ERROR = 1
+	UNCHANGED = 0
+	BAD_ORIGIN = 2
+	EDITOR_FAILED = 3
+	NEEDS_PICKER = 4
+	ABORTED = 130
+
+
+CONFIG_ORIGIN_PREFIX_FILE = "file:"
+
+
+def main(*, key: str, scope: list[str], editor: str | None) -> ExitCode:
+	try:
+		entries = read_values(key, scope)
+	except CmdError as e:
+		sys.stderr.write(e.stderr)
+		return e.returncode or ExitCode.ERROR
+
+	if len(entries) == 1:
+		origin, value = entries[0]
+	else:
+		if not (sys.stdin.isatty() and sys.stdout.isatty()):
+			sys.stderr.write(
+				f"{len(entries)} values found for {key!r}; "
+				f"interactive picker requires a tty\n"
+			)
+			return ExitCode.NEEDS_PICKER
+		fzf = shutil.which("fzf")
+		if fzf is None:
+			sys.stderr.write(
+				f"{len(entries)} values found for {key!r}; "
+				f"install fzf to pick interactively\n"
+			)
+			return ExitCode.NEEDS_PICKER
+		picked = pick(entries, fzf)
+		if picked is None:
+			return ExitCode.ABORTED
+		origin, value = picked
+
+	if not origin.startswith(CONFIG_ORIGIN_PREFIX_FILE):
+		sys.stderr.write(f"cannot edit value from non-file origin: {origin}\n")
+		return ExitCode.BAD_ORIGIN
+	path = origin[len(CONFIG_ORIGIN_PREFIX_FILE):]
+
+	try:
+		new_value = edit(value, editor)
+	except subprocess.CalledProcessError as e:
+		sys.stderr.write(f"editor exited with status {e.returncode}\n")
+		return ExitCode.EDITOR_FAILED
+	if new_value == value:
+		sys.stderr.write("unchanged\n")
+		return ExitCode.UNCHANGED
+
+	try:
+		run(
+			"git", "config", "set",
+			"--file", path,
+			"--fixed-value", "--value", value,
+			key, new_value,
+		)
+	except CmdError as e:
+		sys.stderr.write(e.stderr)
+		return e.returncode or ExitCode.ERROR
+
+	return ExitCode.OK
+
+
+def read_values(key: str, scope: list[str]) -> list[tuple[str, str]]:
+	r = run("git", "config", "get", "--all", "--null", "--show-origin", *scope, key)
+	# Per `git config --null`: values are NUL-terminated and newline is the
+	# delimiter between key and value. `get` emits no key, so with
+	# `--show-origin` each record is "<origin>\0<value>\0" — unambiguous even
+	# when the value itself contains newlines.
+	out = r.stdout
+	entries = []
+	while out:
+		origin, sep1, rest = out.partition("\0")
+		value, sep2, out = rest.partition("\0")
+		if sep1 != "\0" or sep2 != "\0":
+			raise ValueError(
+				f"malformed `git config get --null` output: "
+				f"expected NUL-terminated <origin>\\0<value>\\0 records"
+			)
+		entries.append((origin, value))
+	return entries
+
+
+def pick(entries: list[tuple[str, str]], fzf: str) -> tuple[str, str] | None:
+	# Tab-delimited rows: "<index>\t<origin>\t<single-line preview>"; the
+	# index column is hidden via --with-nth so it only serves to identify
+	# the selection on output.
+	rows = []
+	for i, (origin, value) in enumerate(entries, 1):
+		preview = value.replace("\n", " ↵ ")
+		if len(preview) > 200:
+			preview = preview[:200] + "…"
+		rows.append(f"{i}\t{origin}\t{preview}")
+	r = subprocess.run(
+		[fzf, "--no-multi", "--delimiter=\t", "--with-nth=2.."],
+		input="\n".join(rows), text=True, capture_output=True,
+	)
+	if r.returncode == 130:  # Ctrl-C / Esc
+		return None
+	if r.returncode != 0:
+		raise CmdError(r.returncode, r.stderr)
+	idx = int(r.stdout.split("\t", 1)[0])
+	return entries[idx - 1]
+
+
+def edit(value: str, editor: str | None) -> str:
+	if editor is None:
+		editor = run("git", "var", "GIT_EDITOR").stdout.strip()
+	with tempfile.NamedTemporaryFile(
+		mode="w", suffix=".txt", encoding="utf-8", delete=True, delete_on_close=False
+	) as tf:
+		tf.write(value)
+		tf.close()
+		subprocess.run(
+			f"{editor} {shlex.quote(tf.name)}",
+			shell=True, check=True,
+		)
+		new_value = Path(tf.name).read_text(encoding="utf-8")
+	# Editors typically append a trailing newline; strip exactly one so a
+	# value that had no trailing newline round-trips cleanly.
+	if new_value.endswith("\n") and not value.endswith("\n"):
+		new_value = new_value[:-1]
+	return new_value
+
+
+def run(*cmd: str, allow: tuple[int, ...] = (0,)) -> subprocess.CompletedProcess[str]:
+	r = subprocess.run(cmd, text=True, capture_output=True)
+	if r.returncode not in allow:
+		raise CmdError(r.returncode, r.stderr)
+	return r
+
+
+class CmdError(Exception):
+	def __init__(self, returncode: int, stderr: str) -> None:
+		self.returncode = returncode
+		self.stderr = stderr
+
+
+if __name__ == "__main__":
+	ap = argparse.ArgumentParser(
+		description=__doc__,
+		formatter_class=argparse.RawDescriptionHelpFormatter,
+	)
+	g = ap.add_mutually_exclusive_group()
+	g.add_argument("--global", dest="scope", action="store_const", const=["--global"])
+	g.add_argument("--system", dest="scope", action="store_const", const=["--system"])
+	g.add_argument("--local", dest="scope", action="store_const", const=["--local"])
+	g.add_argument("--worktree", dest="scope", action="store_const", const=["--worktree"])
+	g.add_argument("--file", dest="scope", metavar="PATH",
+					type=lambda p: ["--file", p])
+	ap.set_defaults(scope=[])
+	ap.add_argument("-e", "--editor", metavar="CMD",
+					help="Editor command to use instead of git's default.")
+	ap.add_argument("key", metavar="KEY", help="Config key, e.g. filter.foo.clean")
+	args = ap.parse_args()
+
+	sys.exit(main(**vars(args)))
