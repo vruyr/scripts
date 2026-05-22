@@ -231,7 +231,7 @@ function show_running_apps_from_brew_outdated_cask_json() {
 			'
 				.casks[]
 				| {token: .full_token, version: .installed, artifacts: .artifacts}
-				| .artifacts = (.artifacts | reduce (.[]|to_entries[]) as $i ({}; .[$i.key] |= ((. // []) + $i.value)))
+				| .artifacts = (.artifacts | reduce (.[]|to_entries[]) as $i ({}; .[$i.key] |= ((. // []) + (if ($i.value|type) == "array" then $i.value else [$i.value] end))))
 				| delpaths([["artifacts", "zap"], ["artifacts", "binary"]])
 				| select(.artifacts.app)
 				| . as $cask
