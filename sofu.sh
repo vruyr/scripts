@@ -35,6 +35,7 @@ function main() {
 	local homebrew_cask_outdated=
 	local homebrew_bundle_cleanup=
 	local npm_outdated=
+	local uv_tool_outdated=
 	local pyv_outdated=
 	local macappstore_outdated=
 	local macossystem_outdated=
@@ -44,7 +45,7 @@ function main() {
 		shift
 		case "$opt" in
 			"--all")
-				set -- --brew-bundle-cleanup --brew-bundle-check --brew --brew-cask --npm --pyv --macappstore --macossystem "$@"
+				set -- --brew-bundle-cleanup --brew-bundle-check --brew --brew-cask --npm --uv-tool --pyv --macappstore --macossystem "$@"
 				;;
 			"--brew-bundle-check")
 				homebrew_bundle_check=1
@@ -75,6 +76,12 @@ function main() {
 				;;
 			"--no-npm")
 				npm_outdated=
+				;;
+			"--uv-tool")
+				uv_tool_outdated=1
+				;;
+			"--no-uv-tool")
+				uv_tool_outdated=
 				;;
 			"--pyv")
 				pyv_outdated=1
@@ -160,6 +167,15 @@ function main() {
 			eval_indent 'npm outdated --location=global'
 		else
 			echo "--- npm outdated - NOT AVAILABLE"
+		fi
+	fi
+	if [ "$uv_tool_outdated" ]; then
+		# Upgrade all: uv tool upgrade --all
+		if type >/dev/null 2>&1 uv; then
+			echo "--- uv tool list --outdated"
+			eval_indent 'uv tool list --outdated'
+		else
+			echo "--- uv tool list --outdated - NOT AVAILABLE"
 		fi
 	fi
 	if [ "$pyv_outdated" ]; then
