@@ -3,4 +3,6 @@
 /.mypy_cache/
 # Created with: swiftc print-year-and-week.swift
 /print-year-and-week
+# Created with: swiftc -O parse-date-and-time.swift -o parse-date-and-time
+/parse-date-and-time
 #}}}
