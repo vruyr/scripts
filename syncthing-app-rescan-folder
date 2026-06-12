@@ -350,13 +350,13 @@ def is_remote_fully_synced(completion, connection):
 	)
 
 
-def print_changeset(client, folder_id, filenames):
+def print_changeset(client, folder_id, filenames, prefix=""):
 	"""Show what the rescan detected as changed on disk.
 	Returns {filename: size} so the live upload stream can show percentages."""
 	if not filenames:
-		print("Rescan detected no changed files (folder already matches the index).")
+		print(f"{prefix}Rescan detected no changed files (folder already matches the index).")
 		return {}
-	print(f"Rescan detected {len(filenames)} changed item{'s' if len(filenames) != 1 else ''}:")
+	print(f"{prefix}Rescan detected {len(filenames)} changed item{'s' if len(filenames) != 1 else ''}:")
 	sizes = {}
 	for name in sorted(filenames):
 		try:
@@ -367,44 +367,71 @@ def print_changeset(client, folder_id, filenames):
 		size = g.get("size", 0)
 		sizes[name] = size
 		if g.get("deleted"):
-			print(f"  - {name} (deleted)")
+			print(f"{prefix}  - {name} (deleted)")
 		else:
-			print(f"  + {name} ({_humanize_bytes(size)})")
+			print(f"{prefix}  + {name} ({_humanize_bytes(size)})")
 	return sizes
 
 
-def wait_for_remotes(client, folder_id, clauses, remote_devices, baseline_event_id):
-	"""Drive the wait until every AND-clause holds. Returns an exit code.
+def _strip_outer_parens(desc):
+	return desc[1:-1] if desc.startswith("(") and desc.endswith(")") else desc
 
-	clauses: list of (raw_expr, ast_node). remote_devices: {device_id: name}.
-	baseline_event_id: last /rest/events id captured BEFORE the scan was posted.
+
+class FolderWait:
+	"""Per-folder state tracked across the wait loop.
+
+	remote_devices: {device_id: name} sharing this folder (excluding self).
+	clauses: [(raw_expr, ast_node)] resolved against THIS folder's devices.
 	"""
-	# Banner -- state exactly what we are waiting for (folder-level, by design).
-	print('Conditions (all must hold):')
-	for raw, node in clauses:
-		desc = node.describe()
-		if desc.startswith("(") and desc.endswith(")"):
-			desc = desc[1:-1]
-		print(f"- {desc}")
+
+	def __init__(self, folder_id, folder_path, remote_devices, clauses):
+		self.folder_id = folder_id
+		self.folder_path = folder_path
+		self.remote_devices = remote_devices
+		self.clauses = clauses
+		self.scan_confirmed = False
+		self.changeset = set()
+		self.changeset_printed = False
+		self.file_sizes = {}
+		self.downloads = {}			# device_id -> {filename: bytes_downloaded}
+		self.announced_full = set()		# devices already reported fully received
+		self.last_completion = {}		# device_id -> last completion %
+		self.last_world = {}			# device_id -> fully-received bool (for unmet report)
+		self.online = False
+		self.done = False
+		self.next_no_remotes_warn = 0.0
+
+
+def wait_for_remotes(client, folders, baseline_event_id):
+	"""Drive the wait until every clause holds for every folder. Returns an exit code.
+
+	folders: list of FolderWait. baseline_event_id: last /rest/events id captured
+	BEFORE any scan was posted, so we don't miss the scans' events.
+	"""
+	folders_by_id = {fw.folder_id: fw for fw in folders}
+	multi = len(folders) > 1
+
+	def tag(fw):
+		# Label lines with the folder id only when more than one folder is in play,
+		# so the common single-folder output stays uncluttered.
+		return f"{fw.folder_id}: " if multi else ""
+
+	# Banner -- one block per folder, stating exactly what we wait for (folder-level).
+	for fw in folders:
+		print(f'Waiting for the full folder "{fw.folder_id}" to be received: {fw.folder_path}')
+		print("Conditions (all must hold):")
+		for raw, node in fw.clauses:
+			print(f"- {_strip_outer_parens(node.describe())}")
 
 	last_event_id = baseline_event_id
-	scan_confirmed = False
-	changeset = set()
-	changeset_printed = False
-	file_sizes = {}
-	downloads = {}			# device_id -> {filename: bytes_downloaded}
-
-	announced_full = set()		# devices we've already reported as fully received
-	last_completion = {}		# device_id -> last printed completion %
 	next_progress = 0.0
-	next_no_remotes_warn = 0.0
 	start = time.monotonic()
 
 	try:
 		while True:
 			now = time.monotonic()
 
-			# --- drain new events (non-blocking) -----------------------------
+			# --- drain new events (non-blocking), dispatch by folder ---------
 			# The events query param timeout=0 returns immediately with whatever
 			# is queued, so the loop cadence stays at POLL_INTERVAL rather than
 			# blocking on a long-poll.
@@ -412,65 +439,86 @@ def wait_for_remotes(client, folder_id, clauses, remote_devices, baseline_event_
 			for ev in events:
 				last_event_id = ev["id"]
 				data = ev.get("data") or {}
-				if data.get("folder") != folder_id:
+				fw = folders_by_id.get(data.get("folder"))
+				if fw is None:
 					continue
 				etype = ev.get("type")
 				if etype == "StateChanged" and data.get("from") == "scanning":
-					scan_confirmed = True
+					fw.scan_confirmed = True
 				elif etype == "LocalIndexUpdated":
-					scan_confirmed = True
-					changeset.update(data.get("filenames") or [])
+					fw.scan_confirmed = True
+					fw.changeset.update(data.get("filenames") or [])
 				elif etype == "RemoteDownloadProgress":
-					downloads[data.get("device")] = data.get("state") or {}
+					fw.downloads[data.get("device")] = data.get("state") or {}
 
-			# Print the changeset once the scan is confirmed complete.
-			if scan_confirmed and not changeset_printed:
-				file_sizes = print_changeset(client, folder_id, changeset)
-				changeset_printed = True
+			# Print each folder's changeset once its scan is confirmed complete.
+			for fw in folders:
+				if fw.scan_confirmed and not fw.changeset_printed:
+					fw.file_sizes = print_changeset(client, fw.folder_id, fw.changeset, prefix=tag(fw))
+					fw.changeset_printed = True
 
-			# --- poll completion for every remote device ---------------------
+			# --- poll completion for every remote device of every folder -----
 			connections = (client.get("/rest/system/connections") or {}).get("connections", {})
-			world = {}
-			any_online = False
-			for device_id, name in remote_devices.items():
-				conn = connections.get(device_id, {})
-				if conn.get("connected"):
-					any_online = True
-				comp = client.get("/rest/db/completion", folder=folder_id, device=device_id) or {}
-				received = is_remote_fully_synced(comp, conn)
-				world[device_id] = received
-				if received and device_id not in announced_full:
-					announced_full.add(device_id)
-					print(f'{name}: fully received')
-				elif not received:
-					announced_full.discard(device_id)
-				last_completion[device_id] = comp.get("completion", 0.0)
+			all_done = True
+			for fw in folders:
+				world = {}
+				fw.online = False
+				for device_id, name in fw.remote_devices.items():
+					conn = connections.get(device_id, {})
+					if conn.get("connected"):
+						fw.online = True
+					comp = client.get("/rest/db/completion", folder=fw.folder_id, device=device_id) or {}
+					received = is_remote_fully_synced(comp, conn)
+					world[device_id] = received
+					if received and device_id not in fw.announced_full:
+						fw.announced_full.add(device_id)
+						print(f'{tag(fw)}{name}: fully received')
+					elif not received:
+						fw.announced_full.discard(device_id)
+					fw.last_completion[device_id] = comp.get("completion", 0.0)
+				fw.last_world = world
 
-			# --- success? only trust the world once the scan is confirmed ----
-			if scan_confirmed and all(node.evaluate(world) for _, node in clauses):
-				print(f"All conditions met in {now - start:.1f}s.")
+				# Only trust this folder's world once its scan is confirmed.
+				satisfied = fw.scan_confirmed and all(node.evaluate(world) for _, node in fw.clauses)
+				if satisfied and not fw.done:
+					fw.done = True
+					if multi:
+						print(f"{tag(fw)}all conditions met.")
+				if not fw.done:
+					all_done = False
+
+			if all_done:
+				if multi:
+					print(f"All conditions met for {len(folders)} folders in {now - start:.1f}s.")
+				else:
+					print(f"All conditions met in {now - start:.1f}s.")
 				return 0
 
-			# --- no online remotes: remind periodically ----------------------
-			if not any_online and now >= next_no_remotes_warn:
-				print("No online remote devices are sharing this folder; waiting for one to come online…")
-				next_no_remotes_warn = now + NO_REMOTES_WARN_INTERVAL
+			# --- per-folder: no online remotes, remind periodically ----------
+			for fw in folders:
+				if fw.done or fw.online or now < fw.next_no_remotes_warn:
+					continue
+				print(f"{tag(fw)}No online remote devices are sharing this folder; waiting for one to come online…")
+				fw.next_no_remotes_warn = now + NO_REMOTES_WARN_INTERVAL
 
 			# --- throttled progress ------------------------------------------
 			if now >= next_progress:
-				for device_id, name in remote_devices.items():
-					if device_id in announced_full:
+				for fw in folders:
+					if fw.done:
 						continue
-					pct = last_completion.get(device_id, 0.0)
-					active = downloads.get(device_id) or {}
-					if active:
-						# Show the file the node is currently pulling.
-						fname, got = max(active.items(), key=lambda kv: kv[1])
-						total = file_sizes.get(fname)
-						frac = f" {_humanize_bytes(got)}/{_humanize_bytes(total)}" if total else f" {_humanize_bytes(got)}"
-						print(f"{name}: {pct:.0f}% ← {fname}{frac}")
-					elif any_online:
-						print(f"{name}: {pct:.0f}%")
+					for device_id, name in fw.remote_devices.items():
+						if device_id in fw.announced_full:
+							continue
+						pct = fw.last_completion.get(device_id, 0.0)
+						active = fw.downloads.get(device_id) or {}
+						if active:
+							# Show the file the node is currently pulling.
+							fname, got = max(active.items(), key=lambda kv: kv[1])
+							total = fw.file_sizes.get(fname)
+							frac = f" {_humanize_bytes(got)}/{_humanize_bytes(total)}" if total else f" {_humanize_bytes(got)}"
+							print(f"{tag(fw)}{name}: {pct:.0f}% ← {fname}{frac}")
+						elif fw.online:
+							print(f"{tag(fw)}{name}: {pct:.0f}%")
 				next_progress = now + PROGRESS_THROTTLE
 
 			# --- maintain cadence --------------------------------------------
@@ -480,12 +528,12 @@ def wait_for_remotes(client, folder_id, clauses, remote_devices, baseline_event_
 	except KeyboardInterrupt:
 		print()
 		print("Interrupted. Unmet conditions:")
-		for raw, node in clauses:
-			if not node.evaluate(world):
-				desc = node.describe()
-				if desc.startswith("(") and desc.endswith(")"):
-					desc = desc[1:-1]
-				print(f"- {desc}")
+		for fw in folders:
+			if fw.done:
+				continue
+			for raw, node in fw.clauses:
+				if not node.evaluate(fw.last_world):
+					print(f"{tag(fw)}{_strip_outer_parens(node.describe())}")
 		return 130
 
 
@@ -497,24 +545,25 @@ def main() -> int:
 	parser = argparse.ArgumentParser(
 		description="Trigger an instant Syncthing rescan for a folder or subfolder.",
 	)
-	parser.add_argument("path", type=Path, nargs="?", default=Path.cwd(), help="Path to the synced folder or a subfolder within it (default: cwd).")
+	parser.add_argument("path", type=Path, nargs="*", help="One or more paths, each a synced folder or a subfolder within one (default: cwd). Paths in the same Syncthing folder are coalesced.")
 	parser.add_argument(
 		"--wait-remote",
 		dest="wait_remote",
 		action="append",
 		metavar="EXPR",
 		help=(
-			"After triggering the rescan, wait until remote devices have fully "
-			"received the WHOLE folder. EXPR is a boolean expression over atoms "
-			"count:N, name:VALUE, id:VALUE joined with AND/OR and grouped with "
-			"parentheses, e.g. 'name:macbook AND (id:P56IOI7 OR name:nas)'. "
-			"VALUE is a bareword or a JSON string (name:\"My laptop\"). Repeat "
-			"the flag to add more clauses; all clauses must hold (AND)."
+			"After triggering the rescan(s), wait until remote devices have fully "
+			"received the WHOLE of every involved folder. EXPR is a boolean "
+			"expression over atoms count:N, name:VALUE, id:VALUE joined with AND/OR "
+			"and grouped with parentheses, e.g. 'name:macbook AND (id:P56IOI7 OR "
+			"name:nas)'. VALUE is a bareword or a JSON string (name:\"My laptop\"). "
+			"Repeat the flag to add more clauses; all clauses must hold (AND), and "
+			"every folder must satisfy them."
 		),
 	)
 	args = parser.parse_args()
 
-	what_to_sync_path = args.path.resolve()
+	paths = args.path or [Path.cwd()]
 
 	if not SYNCTHING_APP_CONFIG_PATH.is_file():
 		print(f"Error: Syncthing config not found at {SYNCTHING_APP_CONFIG_PATH}", file=sys.stderr)
@@ -537,24 +586,26 @@ def main() -> int:
 		if fpath and folder.get("id"):
 			folders_by_path[Path(fpath).resolve()] = folder
 
-	# Walk from what_to_sync_path upward to find the enclosing sync folder.
-	folder_el = None
-	sync_folder_path = None
-	sub_path = None
-	for candidate in [what_to_sync_path, *what_to_sync_path.parents]:
-		if candidate in folders_by_path:
-			folder_el = folders_by_path[candidate]
-			sync_folder_path = candidate
-			if candidate != what_to_sync_path:
-				sub_path = what_to_sync_path.relative_to(candidate)
-			break
-
-	if folder_el is None:
-		print(f"No Syncthing folder found matching {args.path!r} or any of its parent directories.", file=sys.stderr)
-		print("Make sure the path is inside a folder managed by Syncthing.", file=sys.stderr)
-		return 3
-
-	folder_id = folder_el.get("id")
+	# Resolve every input path to its enclosing Syncthing folder, coalescing
+	# paths that fall in the same folder. Each target gathers the sub-paths to
+	# rescan; a sub of None means "the whole folder" (a path at the folder root).
+	# targets: {folder_id: {"el": <element>, "path": <root Path>, "subs": set}}
+	targets = {}
+	for given in paths:
+		resolved = given.resolve()
+		match = None
+		for candidate in [resolved, *resolved.parents]:
+			if candidate in folders_by_path:
+				match = candidate
+				break
+		if match is None:
+			print(f"No Syncthing folder found matching {str(given)!r} or any of its parent directories.", file=sys.stderr)
+			print("Make sure the path is inside a folder managed by Syncthing.", file=sys.stderr)
+			return 3
+		el = folders_by_path[match]
+		sub = None if match == resolved else resolved.relative_to(match)
+		target = targets.setdefault(el.get("id"), {"el": el, "path": match, "subs": set()})
+		target["subs"].add(sub)
 
 	ssl_ctx = None
 	if gui_tls:
@@ -562,45 +613,52 @@ def main() -> int:
 	base_url = urlunparse(("https" if gui_tls else "http", gui_address, "", "", "", ""))
 	client = SyncthingClient(base_url, api_key, ssl_ctx)
 
-	# If we will wait, resolve the expression and capture an event baseline
-	# BEFORE triggering the scan -- both so we fail fast on a bad expression and
-	# so we don't miss the scan's StateChanged/LocalIndexUpdated events.
-	clauses = None
+	# If we will wait, resolve the expression against each folder's own device
+	# set and capture an event baseline BEFORE triggering any scan -- both to
+	# fail fast on a bad expression and to not miss the scans' events.
+	folder_waits = []
 	baseline_event_id = 0
 	if args.wait_remote:
 		device_names = {d.get("id"): (d.get("name") or d.get("id")) for d in root.findall("device")}
 		my_id = (client.get("/rest/system/status") or {}).get("myID")
-		shared_ids = [d.get("id") for d in folder_el.findall("device")]
-		remote_devices = {did: device_names.get(did, did) for did in shared_ids if did and did != my_id}
-		if not remote_devices:
-			print("This folder is not shared with any remote device; nothing to wait for.", file=sys.stderr)
-			return 4
+		for folder_id, target in targets.items():
+			shared_ids = [d.get("id") for d in target["el"].findall("device")]
+			remote_devices = {did: device_names.get(did, did) for did in shared_ids if did and did != my_id}
+			if not remote_devices:
+				print(f'Folder "{folder_id}" ({target["path"]}) is not shared with any remote device; nothing to wait for.', file=sys.stderr)
+				return 4
 
-		resolver = make_device_resolver(remote_devices)
-		clauses = []
-		try:
-			for raw in args.wait_remote:
-				node = Parser(tokenize(raw), resolver).parse()
-				clauses.append((raw, node))
-		except ValueError as e:
-			print(f"Error in --wait-remote {raw!r}: {e}", file=sys.stderr)
-			return 5
+			resolver = make_device_resolver(remote_devices)
+			clauses = []
+			try:
+				for raw in args.wait_remote:
+					clauses.append((raw, Parser(tokenize(raw), resolver).parse()))
+			except ValueError as e:
+				print(f'Error in --wait-remote {raw!r} for folder "{folder_id}": {e}', file=sys.stderr)
+				return 5
+			folder_waits.append(FolderWait(folder_id, target["path"], remote_devices, clauses))
 
 		recent = client.get("/rest/events", limit=1) or []
 		baseline_event_id = recent[-1]["id"] if recent else 0
 
-	# Trigger the instant rescan.
-	scan_query = {"folder": folder_id}
-	if sub_path is not None:
-		scan_query["sub"] = str(sub_path)
-	client.post("/rest/db/scan", **scan_query)
+	# Trigger the instant rescan(s). One scan per sub-path; a whole-folder scan
+	# (sub None) subsumes any sub-paths in the same folder.
+	for folder_id, target in targets.items():
+		subs = target["subs"]
+		if None in subs:
+			subs = [None]
+		else:
+			subs = sorted(subs, key=str)
+		for sub in subs:
+			scan_query = {"folder": folder_id}
+			if sub is not None:
+				scan_query["sub"] = str(sub)
+			client.post("/rest/db/scan", **scan_query)
+			at_sub = f" at {sub}" if sub is not None else ""
+			print(f"Rescan triggered for {folder_id} ({target['path']}){at_sub}.")
 
-	at_sub = f" at {sub_path}" if sub_path else ""
-	print(f"Rescan triggered for {folder_id} ({sync_folder_path}){at_sub}.")
-
-	if clauses:
-		print(f'Waiting for the full folder "{folder_id}" to be received: {sync_folder_path}')
-		return wait_for_remotes(client, folder_id, clauses, remote_devices, baseline_event_id)
+	if folder_waits:
+		return wait_for_remotes(client, folder_waits, baseline_event_id)
 
 	return 0
 
