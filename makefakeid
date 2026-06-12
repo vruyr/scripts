@@ -1,0 +1,78 @@
+#!/bin/sh
+# vim: ft=python
+"exec" "uv" "--quiet" "run" "--no-project" "--script" "--" "$0" "$@"
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+#   "faker >=40.23.0",
+#   "babel >=2.0",
+# ]
+# ///
+
+__doc__ = """
+Generate a fake identity (name + email) for captive portal logins.
+Picks a random Faker locale and free-tier email domain.
+"""
+
+import random
+import sys
+import unicodedata
+import babel.core
+import faker
+import faker.config
+
+
+def main():
+	fake, locale = _make_faker()
+	first = fake.first_name()
+	last = fake.last_name()
+	domain = fake.free_email_domain()
+	local_part = f"{first.lower()}.{last.lower()}".replace(" ", "").replace("'", "")
+	email = f"{local_part}@{domain}"
+	print(_locale_display_name(locale))
+	print(first)
+	print(last)
+	print(email)
+
+
+def _make_faker():
+	locs = list(faker.config.AVAILABLE_LOCALES)
+	while True:
+		loc = random.choice(locs)
+		if loc in _DEPRECATED_LOCALES or loc in _EXCLUDED_LOCALES:
+			continue
+		f = faker.Faker(loc)
+		if _is_latin(f):
+			return f, loc
+
+
+def _is_latin(f):
+	sample = f.first_name() + f.last_name()
+	return all(
+		unicodedata.name(c, "").startswith("LATIN") or not c.isalpha()
+		for c in sample
+	)
+
+
+def _locale_display_name(loc):
+	try:
+		name = babel.core.Locale.parse(loc, sep="_").get_display_name("en")
+		return f"{name} ({loc})"
+	except babel.core.UnknownLocaleError:
+		return loc
+
+
+_DEPRECATED_LOCALES = {
+	"fr_QC",   # use fr_CA
+}
+
+_EXCLUDED_LOCALES = {
+	"az_AZ",
+	"tr_TR",
+}
+
+
+if __name__ == "__main__":
+	sys.exit(main())
