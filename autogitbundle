@@ -1,40 +1,45 @@
 #!/usr/bin/env uv --quiet run --no-project --script --isolated --refresh --
 # /// script
-# # Docopt issues SyntaxWarning in Python 3.12
-# requires-python = ">=3.11,<3.12"
+# requires-python = ">=3.11,<4"
 # dependencies = [
-#   "docopt >=0.6.2",
 # ]
 # ///
 
 """
-Usage:
-	{prog}
+Create or refresh git bundles for the current repository according to its
+autogitbundle.* git config.
 """
 
-import sys, locale, asyncio, subprocess, os, pathlib, re, typing
-import docopt
+import sys, locale, asyncio, subprocess, os, pathlib, re, typing, argparse
 
 
 async def main(*, args, prog):
 	locale.setlocale(locale.LC_ALL, "")
 
-	params = docopt.docopt(
-		__doc__.replace("\t", " " * 4).format(prog=os.path.basename(prog)),
-		argv=args,
-		help=True,
-		version=True,
-		options_first=False
+	parser = argparse.ArgumentParser(
+		prog=os.path.basename(prog),
+		description="Create or refresh git bundles for the current repository "
+			"according to its autogitbundle.* git config.",
 	)
-	assert not params, params
+	parser.add_argument(
+		"--print-paths",
+		action="store_true",
+		help="After creating/refreshing bundles, print each matched bundle file "
+			"path to stdout (one per line) and route log messages to stderr, so "
+			"stdout carries only paths for piping into another command.",
+	)
+	params = parser.parse_args(args)
+	print_paths = params.print_paths
 
 	log = asyncio.Queue()
 	pending_tasks = []
 	printer_task = asyncio.create_task(
-		printer(queue=log, fo=sys.stdout)
+		# In --print-paths mode keep stdout clean for the paths and send the
+		# human-readable log to stderr instead.
+		printer(queue=log, fo=(sys.stderr if print_paths else sys.stdout))
 	)
 
-	await create_bundles(log=log)
+	bundle_paths = await create_bundles(log=log)
 
 	await asyncio.gather(*pending_tasks)
 	current_task = asyncio.current_task()
@@ -43,6 +48,10 @@ async def main(*, args, prog):
 
 	await log.put(None)
 	await printer_task
+
+	if print_paths:
+		for bundle_path in bundle_paths:
+			print(bundle_path, file=sys.stdout)
 
 
 async def create_bundles(*, log):
@@ -80,6 +89,10 @@ async def create_bundles(*, log):
 	"""
 
 	git = Git(git_path="git", output_queue=log)
+
+	# All bundle file paths matched for this repo (whether freshly created or
+	# already up to date); returned so callers can wait on them syncing.
+	bundle_paths = []
 
 	repo_path = pathlib.Path.cwd()
 
@@ -145,6 +158,8 @@ async def create_bundles(*, log):
 				assert bundle_path, (bundle_path,)
 				bundle_path = bundle_dir / (strip_suffix(bundle_path, ".git", bundle_path) + "")
 
+				bundle_paths.append(bundle_path)
+
 				if await git.is_bundle_out_of_date(bundle_path):
 					bundle_path.parent.mkdir(parents=True, exist_ok=True)
 					await log.put(f"Creating bundle {bundle_path}")
@@ -155,6 +170,8 @@ async def create_bundles(*, log):
 			continue
 
 		await log.put(f"Unknown config key {key}")
+
+	return bundle_paths
 
 
 class Git(object):
