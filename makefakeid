@@ -16,6 +16,7 @@ Generate a fake identity (name + email) for captive portal logins.
 Picks a random Faker locale and free-tier email domain.
 """
 
+import argparse
 import random
 import sys
 import unicodedata
@@ -24,20 +25,44 @@ import faker
 import faker.config
 
 
-def main():
-	fake, locale = _make_faker()
+def main(*, locale):
+	fake, locale = _make_faker(locale)
 	first = fake.first_name()
 	last = fake.last_name()
 	domain = fake.free_email_domain()
 	local_part = f"{first.lower()}.{last.lower()}".replace(" ", "").replace("'", "")
 	email = f"{local_part}@{domain}"
+	postcode = fake.postcode()
 	print(_locale_display_name(locale))
 	print(first)
 	print(last)
 	print(email)
+	print(postcode)
 
 
-def _make_faker():
+def parse_args(*, args, prog):
+	parser = argparse.ArgumentParser(
+		prog=prog,
+		description=__doc__,
+		add_help=False,
+	)
+	parser.add_argument(
+		"--help", "-h",
+		action="help",
+		help="show this help message and exit",
+	)
+	parser.add_argument(
+		"--locale", "-l", metavar="LOCALE",
+		action="store", dest="locale", default=None, required=False,
+		help="Faker locale to use (e.g. de_DE, fr_FR); default: random",
+	)
+	opts = parser.parse_args(args)
+	return vars(opts)
+
+
+def _make_faker(locale=None):
+	if locale is not None:
+		return faker.Faker(locale), locale
 	locs = list(faker.config.AVAILABLE_LOCALES)
 	while True:
 		loc = random.choice(locs)
@@ -74,5 +99,12 @@ _EXCLUDED_LOCALES = {
 }
 
 
+def smain(argv=None):
+	if argv is None:
+		argv = sys.argv
+	opts = parse_args(args=argv[1:], prog=argv[0])
+	return main(**opts)
+
+
 if __name__ == "__main__":
-	sys.exit(main())
+	sys.exit(smain())
