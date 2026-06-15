@@ -1,0 +1,280 @@
+#!/bin/sh
+"exec" "uv" "--quiet" "run" "--no-project" "--script" "--" "$0" "$@"
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+# ]
+# ///
+
+__doc__ = """
+Run Ookla `speedtest` and print a single Obsidian/Templater line matching the
+"Wi-Fi Speed" template:
+
+    [Wi-Fi SSID: `<% tp.file.cursor() %>`: <down>↓ <up>↑ Mbps](<result-url>).
+
+The SSID slot is emitted as a literal Templater cursor command so it can be
+filled in by hand after pasting. Down/up are decimal Mbps (bits) rounded to one
+decimal, derived from speedtest's bytes/s bandwidth.
+
+A live panel showing every field reported by speedtest's jsonl stream (idle
+ping, under-load latency, jitter, low/high, bytes, elapsed, packet loss,
+interface, ISP, server) is rendered to stderr and left on screen when done.
+Only the final template line goes to stdout, and it is also copied to the
+terminal clipboard via OSC 52. Any extra arguments are forwarded to
+`speedtest` (e.g. `-s <server-id>`).
+"""
+
+import sys
+import json
+import base64
+import subprocess
+
+
+SSID_CURSOR = "<% tp.file.cursor() %>"
+
+
+def mbps(bandwidth_bytes_per_sec):
+	# speedtest machine-readable bandwidth is bytes/s; Mbps is decimal megabits.
+	if bandwidth_bytes_per_sec is None:
+		return None
+	return bandwidth_bytes_per_sec * 8 / 1_000_000
+
+
+# Fixed column widths keep the grid steady while values grow during the run.
+LABELW = 11
+
+DASH = "—"
+
+
+def fms(value):
+	return f"{value:.3f}" if value is not None else DASH
+
+
+def fspeed(value):
+	return f"{mbps(value):.1f} Mbps" if value is not None else DASH
+
+
+def fbytes(value):
+	return f"{value:,}" if value is not None else DASH
+
+
+def felapsed(value):
+	return f"{value:,} ms" if value is not None else DASH
+
+
+def fpct(fraction):
+	return f"{fraction * 100:.1f}%" if fraction is not None else DASH
+
+
+def fbool(value):
+	return {True: "yes", False: "no"}.get(value, DASH)
+
+
+def grid(label, cells):
+	# cells: list of (text, width); each is right-justified into its column.
+	parts = [f"{label:<{LABELW}}"]
+	parts += [f"{text:>{width}}" for text, width in cells]
+	return "  ".join(parts)
+
+
+def render(state):
+	srv = state["server"]
+	iface = state["interface"]
+	ping = state["ping"]
+	dl = state["download"]
+	ul = state["upload"]
+	indent = " " * (LABELW + 2)
+
+	# Throughput grid columns.
+	SPEEDW, BYTESW, ELAPW, PROGW = 11, 14, 12, 8
+	thru_cols = [("speed", SPEEDW), ("bytes", BYTESW), ("elapsed", ELAPW), ("progress", PROGW)]
+
+	def thru_row(label, s):
+		return grid(label, [
+			(fspeed(s.get("bandwidth")), SPEEDW),
+			(fbytes(s.get("bytes")), BYTESW),
+			(felapsed(s.get("elapsed")), ELAPW),
+			(fpct(s.get("progress")), PROGW),
+		])
+
+	# Latency grid columns (all ms). The central value is reported under
+	# different keys: `latency` (arithmetic mean) for the idle ping, `iqm`
+	# (interquartile mean) under load — merged into one mutually-exclusive column.
+	MEANW, LOWW, HIGHW, JITW = 10, 9, 9, 9
+	lat_cols = [("mean/iqm", MEANW), ("low", LOWW), ("high", HIGHW), ("jitter", JITW)]
+
+	def lat_row(label, lat):
+		central = lat.get("iqm")
+		if central is None:
+			central = lat.get("latency")
+		return grid(label, [
+			(fms(central), MEANW),
+			(fms(lat.get("low")), LOWW),
+			(fms(lat.get("high")), HIGHW),
+			(fms(lat.get("jitter")), JITW),
+		])
+
+	packet_loss = state.get("packetLoss")
+	packet_loss_str = f"{packet_loss:.1f}%" if packet_loss is not None else DASH
+
+	return [
+		f"{'Server':<{LABELW}}  {srv.get('name', DASH)} — "
+		f"{srv.get('location', DASH)}, {srv.get('country', DASH)}",
+		f"{indent}#{srv.get('id', DASH)}  "
+		f"{srv.get('host', DASH)}:{srv.get('port', DASH)}  {srv.get('ip', DASH)}",
+		f"{'ISP':<{LABELW}}  {state.get('isp', DASH)}",
+		f"{'Interface':<{LABELW}}  {iface.get('name', DASH)}   "
+		f"{iface.get('internalIp', DASH)} → {iface.get('externalIp', DASH)}   "
+		f"mac {iface.get('macAddr', DASH)}   vpn {fbool(iface.get('isVpn'))}",
+		f"{'Packet loss':<{LABELW}}  {packet_loss_str}",
+		"",
+		grid("", thru_cols),
+		thru_row("Download", dl),
+		thru_row("Upload", ul),
+		"",
+		grid("Latency", lat_cols),
+		lat_row("Idle ping", ping),
+		lat_row("Download", dl.get("latency", {})),
+		lat_row("Upload", ul.get("latency", {})),
+		"",
+		f"{'Result':<{LABELW}}  {state.get('result', {}).get('url', DASH)}",
+	]
+
+
+class Panel:
+	"""In-place multi-line renderer for a tty; one-shot otherwise."""
+
+	def __init__(self, stream):
+		self.stream = stream
+		self.tty = stream.isatty()
+		self.lines = 0
+
+	def update(self, lines):
+		if not self.tty:
+			return
+		out = []
+		if self.lines:
+			out.append(f"\033[{self.lines}A")
+		for line in lines:
+			out.append("\r\033[K" + line + "\n")
+		self.stream.write("".join(out))
+		self.stream.flush()
+		self.lines = len(lines)
+
+	def finish(self, lines):
+		# Leave the panel on screen; only ensure it is shown at least once.
+		if self.tty:
+			self.update(lines)
+		else:
+			self.stream.write("\n".join(lines) + "\n")
+			self.stream.flush()
+
+
+def copy_to_clipboard(text):
+	payload = base64.b64encode(text.encode("utf-8")).decode("ascii")
+	sequence = f"\033]52;c;{payload}\a"
+	# OSC 52 must reach the terminal, not a pipe. Prefer the controlling tty.
+	try:
+		with open("/dev/tty", "w") as tty:
+			tty.write(sequence)
+			tty.flush()
+			return
+	except OSError:
+		pass
+	for stream in (sys.stderr, sys.stdout):
+		if stream.isatty():
+			stream.write(sequence)
+			stream.flush()
+			return
+
+
+def main(*, args):
+	cmd = ["speedtest", "--format", "jsonl", "--progress", "yes", *args]
+	try:
+		proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
+	except FileNotFoundError:
+		print("error: `speedtest` not found in PATH.", file=sys.stderr)
+		return 127
+
+	state = {
+		"server": {},
+		"interface": {},
+		"ping": {},
+		"download": {},
+		"upload": {},
+		"result": {},
+	}
+	panel = Panel(sys.stderr)
+	have_result = False
+
+	for line in proc.stdout:
+		line = line.strip()
+		if not line:
+			continue
+		try:
+			event = json.loads(line)
+		except json.JSONDecodeError:
+			print(line, file=sys.stderr)
+			continue
+
+		kind = event.get("type")
+		if kind == "testStart":
+			state["isp"] = event.get("isp")
+			state["server"] = event.get("server", {})
+			state["interface"] = event.get("interface", {})
+		elif kind == "ping":
+			state["ping"].update(event.get("ping", {}))
+		elif kind in ("download", "upload"):
+			state[kind].update(event.get(kind, {}))
+		elif kind == "result":
+			have_result = True
+			for key in ("ping", "download", "upload"):
+				if key in event:
+					state[key].update(event[key])
+			state["isp"] = event.get("isp", state.get("isp"))
+			state["server"] = event.get("server", state["server"])
+			state["interface"] = event.get("interface", state["interface"])
+			state["packetLoss"] = event.get("packetLoss")
+			state["result"] = event.get("result", {})
+
+		panel.update(render(state))
+
+	rc = proc.wait()
+	panel.finish(render(state))
+
+	if not have_result:
+		print(f"error: speedtest produced no result (exit {rc}).", file=sys.stderr)
+		return rc or 1
+
+	down = mbps(state["download"].get("bandwidth"))
+	up = mbps(state["upload"].get("bandwidth"))
+	url = state["result"].get("url", "")
+
+	# Latency block (format B): idle latency+jitter, then loaded iqm+jitter per
+	# direction. Rounded to 2 decimals to match speedtest's default precision.
+	def ms2(value):
+		return f"{value:,.2f}ms" if value is not None else DASH
+
+	ping = state["ping"]
+	dl_lat = state["download"].get("latency", {})
+	ul_lat = state["upload"].get("latency", {})
+	latency = (
+		f"{ms2(ping.get('latency'))} {ms2(ping.get('jitter'))}"
+		f" ⬩ ↓ {ms2(dl_lat.get('iqm'))} {ms2(dl_lat.get('jitter'))}"
+		f" ↑ {ms2(ul_lat.get('iqm'))} {ms2(ul_lat.get('jitter'))}"
+	)
+
+	out_line = (
+		f"[Wi-Fi SSID: `{SSID_CURSOR}`: "
+		f"{down:.2f}↓ {up:.2f}↑ Mbps ⬩ {latency}]({url})"
+	)
+
+	print(out_line)
+	copy_to_clipboard(out_line)
+	return 0
+
+
+if __name__ == "__main__":
+	sys.exit(main(args=sys.argv[1:]))
