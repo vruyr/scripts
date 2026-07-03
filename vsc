@@ -46,7 +46,10 @@ on run argv
 		repeat with bundleID in targetBundleIDs
 			try
 				set query to "kMDItemCFBundleIdentifier ==" & quoted form of bundleID & "c"
-				set mdfindOutput to do shell script "mdfind " & quoted form of query
+				-- do shell script inside a System Events tell block is dispatched to System
+				-- Events, which needs Automation permission that SSH sessions can't be
+				-- granted; run it in the script's own context so mdfind works over SSH too.
+				tell current application to set mdfindOutput to do shell script "mdfind " & quoted form of query
 				set mdfindOutputLines to paragraphs of mdfindOutput
 				repeat with aLine in mdfindOutputLines
 					if foundAppBundles does not contain aLine then
