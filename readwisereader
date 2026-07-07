@@ -1,4 +1,5 @@
-#!/usr/bin/env -S uv --quiet run --no-project --script --
+#!/bin/sh
+"exec" "uv" "--quiet" "run" "--no-project" "--script" "--" "$0" "$@"
 # https://peps.python.org/pep-0723/
 # https://github.com/astral-sh/uv
 # /// script
@@ -8,7 +9,7 @@
 # ]
 # ///
 
-"""
+__doc__ = """
 Description
 """
 
@@ -21,8 +22,7 @@ CONFIG_DIR = pathlib.Path.home() / ".config" / "readwisereader"
 
 async def main(
 	*,
-	# Input Data
-	urls, tags, notes, location
+	command, **opts
 ):
 	locale.setlocale(locale.LC_ALL, "")
 
@@ -31,15 +31,38 @@ async def main(
 	access_token = auth["access_token"]
 
 	async with ReadwiseReaderClient(access_token=access_token) as client:
-		for url in urls:
-			# Save each URL with the provided tags and notes
-			result = await client.save(
-				url=url,
-				tags=tags,
-				notes="\n".join(notes or []),
-				location=location,
-			)
-			print(ansi_hyperlink(text=result["id"], url=result["url"]), url)
+		if command == "save":
+			return await main_save(client=client, **opts)
+		elif command == "tags":
+			return await main_tags(client=client, **opts)
+		else:
+			raise NotImplementedError(f"Unknown command: {command}")
+
+
+async def main_save(
+	*,
+	client,
+	# Input Data
+	urls, tags, notes, location
+):
+	for url in urls:
+		# Save each URL with the provided tags and notes
+		result = await client.save(
+			url=url,
+			tags=tags,
+			notes="\n".join(notes or []),
+			location=location,
+		)
+		print(ansi_hyperlink(text=result["id"], url=result["url"]), url)
+
+
+async def main_tags(
+	*,
+	client,
+):
+	tags = await client.fetch_tags()
+	for tag in sorted(tags, key=lambda x: x["name"]):
+		print(tag["name"])
 
 
 def ansi_hyperlink(*, text, url):
@@ -202,7 +225,7 @@ class ReadwiseReaderClient:
 		SUPPORTED_FIELDS = {
 			"title", "author", "summary",
 			"published_date", "image_url",
-			"location", "category"
+			"location", "category", "notes"
 		}
 
 		if set(fields.keys()) - SUPPORTED_FIELDS:
@@ -221,9 +244,9 @@ class ReadwiseReaderClient:
 			response.raise_for_status()
 			return await response.json()
 
-	async def fetchTags(self):
+	async def fetch_tags(self):
 		"""
-		Retrieve the list of tags from Readwise Reader.
+		Retrieve the list of all tags from Readwise Reader, following pagination.
 		"""
 
 		if not self.session:
@@ -234,18 +257,31 @@ class ReadwiseReaderClient:
 			"Content-Type": "application/json"
 		}
 
-		async with self.session.get(
-			self.TAG_LIST_URL,
-			headers=headers,
-		) as response:
-			response.raise_for_status()
-			return await response.json()
+		tags = []
+		params = {}
+		while True:
+			async with self.session.get(
+				self.TAG_LIST_URL,
+				headers=headers,
+				params=params,
+			) as response:
+				response.raise_for_status()
+				page = await response.json()
+
+			tags.extend(page["results"])
+
+			next_page_cursor = page.get("nextPageCursor")
+			if not next_page_cursor:
+				break
+			params = {"pageCursor": next_page_cursor}
+
+		return tags
 
 
 def parse_args(*, args, prog):
 	parser = argparse.ArgumentParser(
 		prog=prog,
-		usage="%(prog)s [OPTIONS]...",
+		usage="%(prog)s COMMAND [OPTIONS]...",
 		description=__doc__,
 		formatter_class=argparse.RawTextHelpFormatter,
 		fromfile_prefix_chars="@",
@@ -261,27 +297,62 @@ def parse_args(*, args, prog):
 		help="show help message and exit",
 	)
 
-	options_data = parser.add_argument_group("Input Data Options")
-	options_data.add_argument(
+	subparsers = parser.add_subparsers(
+		title="Commands",
+		dest="command", metavar="COMMAND",
+		required=True,
+	)
+
+	parser_save = subparsers.add_parser(
+		"save",
+		usage="%(prog)s [OPTIONS]... URL...",
+		description="Save URLs to Readwise Reader.",
+		help="save URLs to Readwise Reader",
+		formatter_class=argparse.RawTextHelpFormatter,
+		add_help=False,
+	)
+	options_save_generic = parser_save.add_argument_group("Generic Options")
+	options_save_generic.add_argument(
+		"--help", "-h",
+		action="help",
+		help="show help message and exit",
+	)
+	options_save_data = parser_save.add_argument_group("Input Data Options")
+	options_save_data.add_argument(
 		"urls", metavar="URL",
 		type=str, nargs="+",
 		help="URLs to save"
 	)
-	options_data.add_argument(
+	options_save_data.add_argument(
 		"--tag", "-t", metavar="TAG",
 		dest="tags", action="append", type=str, default=None,
 		help="Tag to apply to the URLs",
 	)
-	options_data.add_argument(
+	options_save_data.add_argument(
 		"--notes", "-n", metavar="TEXT",
 		dest="notes", action="append", type=str, default=None,
 		help="Notes to add to the URLs",
 	)
-	options_data.add_argument(
+	options_save_data.add_argument(
 		"--location", "-l",
 		dest="location", choices=["new", "later", "archive", "feed"],
 		default=None,
 		help="Where to save the URLs",
+	)
+
+	parser_tags = subparsers.add_parser(
+		"tags",
+		usage="%(prog)s [OPTIONS]...",
+		description="List existing tags in Readwise Reader.",
+		help="list existing tags",
+		formatter_class=argparse.RawTextHelpFormatter,
+		add_help=False,
+	)
+	options_tags_generic = parser_tags.add_argument_group("Generic Options")
+	options_tags_generic.add_argument(
+		"--help", "-h",
+		action="help",
+		help="show help message and exit",
 	)
 
 	opts = parser.parse_args(args)
