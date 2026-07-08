@@ -1,0 +1,127 @@
+#!/bin/sh
+"exec" "uv" "--quiet" "run" "--no-project" "--script" "--" "$0" "$@"
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+# ]
+# ///
+
+__doc__ = """
+Turn a downloaded media file name into an Obsidian wiki link.
+
+The file name is trusted only for its `.<extractor>.<id>.<ext>` suffix, e.g.
+`... A proper guide to Fable 5.youtube.8GRmLR__OGQ.mp4`. The `<extractor>`
+names the yt-dlp extractor (`youtube`) and `<id>` is the video id. Everything
+that ends up in the link (channel, upload date, title) is fetched fresh from
+yt-dlp using that id, so a misnamed file still produces a correct link:
+
+	[[YouTube ⬩ Theo - t3․gg ⬩ 26.07.05 ⬩ A proper guide to Fable 5 ⬩ 8GRmLR__OGQ]]
+"""
+
+import argparse, base64, datetime, json, os, re, subprocess, sys
+from typing import Any
+
+
+# Only the trailing `.<extractor>.<id>.<ext>` is trusted; anything before it
+# (a human-chosen title, date, etc.) is ignored. Ids never contain dots or
+# whitespace, so three dot-separated, space-free trailing segments pin it down.
+SUFFIX_RE = re.compile(r"\.(?P<extractor>[^.\s]+)\.(?P<video_id>[^.\s]+)\.[^.\s]+$")
+
+# Per-extractor display label and how to turn an id back into a watch URL.
+EXTRACTORS = {
+	"youtube": {
+		"label": "YouTube",
+		"url": "https://www.youtube.com/watch?v={id}",
+	},
+}
+
+SEP = " ⬩ "
+
+
+def obsidian_link_for(filename: str) -> str:
+	basename = os.path.basename(filename)
+	m = SUFFIX_RE.search(basename)
+	if not m:
+		raise ValueError(f"unrecognized file name (no .<extractor>.<id>.<ext> suffix): {basename!r}")
+
+	extractor = m["extractor"]
+	video_id = m["video_id"]
+	spec = EXTRACTORS.get(extractor)
+	if spec is None:
+		raise ValueError(f"unsupported extractor {extractor!r} in {basename!r}")
+
+	info = ytdlp_info(spec["url"].format(id=video_id))
+
+	upload_date = datetime.datetime.strptime(info["upload_date"], "%Y%m%d")
+	fields = [
+		spec["label"],
+		info["uploader"],
+		upload_date.strftime("%y.%m.%d"),
+		info["title"],
+		info["id"],
+	]
+	return "[[" + SEP.join(fields) + "]]"
+
+
+def ytdlp_info(url: str) -> dict[str, Any]:
+	p = subprocess.run(
+		["yt-dlp", "--quiet", "--no-warnings", "--dump-single-json", url],
+		stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+	)
+	if p.returncode != 0:
+		raise RuntimeError(f"yt-dlp failed for {url}: {p.stderr.strip()}")
+	return json.loads(p.stdout)
+
+
+def copy_to_clipboard(text: str) -> None:
+	# OSC 52: ESC ] 52 ; c ; <base64> BEL — ask the terminal to set the clipboard.
+	# Written to the controlling terminal so a piped/redirected stdout stays clean.
+	payload = base64.b64encode(text.encode("utf-8")).decode("ascii")
+	seq = f"\x1b]52;c;{payload}\x07"
+	try:
+		with open("/dev/tty", "w") as tty:
+			tty.write(seq)
+			tty.flush()
+	except OSError:
+		sys.stderr.write(seq)
+		sys.stderr.flush()
+
+
+def parse_args(*, args: list[str], prog: str) -> dict[str, Any]:
+	parser = argparse.ArgumentParser(
+		prog=prog,
+		description=__doc__,
+		formatter_class=argparse.RawDescriptionHelpFormatter,
+	)
+	parser.add_argument("--copy", "-c", action="store_true",
+		help="also copy the produced link(s) to the clipboard via an OSC 52 escape")
+	parser.add_argument("filenames", metavar="FILE", nargs="+",
+		help="media file whose .<extractor>.<id>.<ext> suffix names the source video")
+	return vars(parser.parse_args(args))
+
+
+def main(*, filenames: list[str], copy: bool) -> int:
+	status = 0
+	links: list[str] = []
+	for filename in filenames:
+		try:
+			link = obsidian_link_for(filename)
+		except (ValueError, RuntimeError, KeyError) as e:
+			print(f"{os.path.basename(sys.argv[0])}: {e}", file=sys.stderr)
+			status = 1
+			continue
+		print(link)
+		links.append(link)
+	if copy and links:
+		copy_to_clipboard("\n".join(links))
+	return status
+
+
+if __name__ == "__main__":
+	try:
+		sys.exit(main(**parse_args(args=sys.argv[1:], prog=sys.argv[0])))
+	except KeyboardInterrupt:
+		print(file=sys.stderr)
+		sys.exit(127)
