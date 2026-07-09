@@ -19,6 +19,11 @@ automatically. Press c to clear successfully finished downloads from the
 list. When the TUI exits (press q), a plain-text summary of successes and
 failures is printed to stdout — including rows cleared from the screen.
 
+On startup the current directory and each of its ancestors are searched
+for ".yt-dlp.config" files; every one found is passed to yt-dlp with
+--config-locations, outermost first, so the config closest to the current
+directory wins. Just cd into a folder to download the way it expects.
+
 Everything after "--" is forwarded to yt-dlp verbatim.
 """
 
@@ -58,11 +63,18 @@ async def main(
 	yt_dlp,
 	watch_file,
 	log_urls,
+	config_filename,
 	ytdlp_args,
 ):
 	locale.setlocale(locale.LC_ALL, "")
 
 	command = tuple(shlex.split(yt_dlp))
+	config_locations = (
+		find_config_locations(config_filename) if config_filename else []
+	)
+	config_args = tuple(
+		arg for path in config_locations for arg in ("--config-locations", path)
+	)
 	url_source = (
 		watch_file_for_urls(watch_file) if watch_file is not None
 		else watch_pasteboard_for_urls()
@@ -73,6 +85,8 @@ async def main(
 	app = PasteboardDownloadApp(
 		url_source=url_source,
 		command=command,
+		config_args=config_args,
+		config_locations=config_locations,
 		extra_args=tuple(ytdlp_args),
 	)
 	await app.run_async()
@@ -92,6 +106,30 @@ async def main(
 			print(f"∅ {row.title or row.url} — interrupted")
 
 	return 1 if failures else 0
+
+
+# --- Config discovery -------------------------------------------------------
+
+
+def find_config_locations(filename, start=None):
+	"""Collect `filename` files from `start` (default cwd) up to the root.
+
+	Returned outermost-first: yt-dlp applies --config-locations left to
+	right and lets later options win, so the config closest to the current
+	directory takes precedence over its ancestors.
+	"""
+	directory = os.path.abspath(start if start is not None else os.getcwd())
+	found = []
+	while True:
+		candidate = os.path.join(directory, filename)
+		if os.path.isfile(candidate):
+			found.append(candidate)
+		parent = os.path.dirname(directory)
+		if parent == directory:
+			break
+		directory = parent
+	found.reverse()
+	return found
 
 
 # --- URL sources ------------------------------------------------------------
@@ -183,7 +221,7 @@ class Failed:
 	message: str
 
 
-async def download_events(url, *, command, extra_args):
+async def download_events(url, *, command, config_args, extra_args):
 	"""Run yt-dlp for a single URL, retrying on failure, yielding events.
 
 	The generator's finally block is await-free so that aclose() during
@@ -196,7 +234,10 @@ async def download_events(url, *, command, extra_args):
 		yield AttemptStarted(attempt)
 
 		proc = await asyncio.create_subprocess_exec(
-			*command, *YTDLP_OUTPUT_ARGS, *extra_args, "--", url,
+			# config_args come before YTDLP_OUTPUT_ARGS so a discovered config
+			# can never override the output/progress options the TUI parses;
+			# explicit extra_args stay last and win over everything.
+			*command, *config_args, *YTDLP_OUTPUT_ARGS, *extra_args, "--", url,
 			stdin=asyncio.subprocess.DEVNULL,
 			stdout=asyncio.subprocess.PIPE,
 			stderr=asyncio.subprocess.PIPE,
@@ -554,14 +595,16 @@ class PasteboardDownloadApp(App):
 	}
 	"""
 
-	def __init__(self, *, url_source, command, extra_args):
+	def __init__(self, *, url_source, command, config_args, config_locations, extra_args):
 		super().__init__()
 		self._url_source = url_source
 		self._command = command
+		self._config_args = config_args
+		self._config_locations = config_locations
 		self._extra_args = extra_args
 		self._next_number = 1
 		self.rows = []
-		self.sub_title = shlex.join([*command, *extra_args])
+		self.sub_title = shlex.join([*command, *config_args, *extra_args])
 
 	def compose(self):
 		yield Header()
@@ -570,6 +613,11 @@ class PasteboardDownloadApp(App):
 
 	def on_mount(self):
 		self.run_worker(self._watch_urls(), group="url-watcher")
+		if self._config_locations:
+			self.notify(
+				"Using config: " + ", ".join(self._config_locations),
+				timeout=10,
+			)
 
 	async def _watch_urls(self):
 		async for url in self._url_source:
@@ -604,7 +652,12 @@ class PasteboardDownloadApp(App):
 		)
 
 	async def _download(self, url, row):
-		events = download_events(url, command=self._command, extra_args=self._extra_args)
+		events = download_events(
+			url,
+			command=self._command,
+			config_args=self._config_args,
+			extra_args=self._extra_args,
+		)
 		try:
 			async for event in events:
 				match event:
@@ -740,6 +793,16 @@ def parse_args(*, args, prog):
 		"--log-urls", metavar="PATH",
 		action="store", dest="log_urls", default=None,
 		help="append every accepted URL to PATH as \"<timestamp>\\t<url>\" lines\n(for audit purposes; duplicates are logged too)",
+	)
+	options_main.add_argument(
+		"--config-filename", metavar="NAME",
+		action="store", dest="config_filename", default=".yt-dlp.config",
+		help="filename to look for in the current directory and its ancestors;\neach one found is passed to yt-dlp via --config-locations, outermost\nfirst, so the closest one wins" + the_default,
+	)
+	options_main.add_argument(
+		"--no-config-walk",
+		action="store_const", dest="config_filename", const=None,
+		help="do not search parent directories for config files",
 	)
 
 	opts = vars(parser.parse_args(args))
