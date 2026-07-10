@@ -1,0 +1,91 @@
+#!/bin/sh
+"exec" "uv" "--quiet" "run" "--no-project" "--script" "--" "$0" "$@"
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
+# /// script
+# requires-python = ">=3.14,<4"
+# dependencies = [
+# ]
+# ///
+
+__doc__ = """
+Open the source video of a downloaded media file in the browser.
+
+The file name is trusted only for its `.<extractor>.<id>.<ext>` suffix, e.g.
+`... A proper guide to Fable 5.youtube.8GRmLR__OGQ.mp4`. The `<extractor>`
+names the yt-dlp extractor (`youtube`) and `<id>` is the video id, which is
+all that is needed to reconstruct the watch URL:
+
+	https://www.youtube.com/watch?v=8GRmLR__OGQ
+"""
+
+import argparse, os, re, shutil, subprocess, sys
+from typing import Any
+
+
+# Only the trailing `.<extractor>.<id>.<ext>` is trusted; anything before it
+# (a human-chosen title, date, etc.) is ignored. Ids never contain dots or
+# whitespace, so three dot-separated, space-free trailing segments pin it down.
+SUFFIX_RE = re.compile(r"\.(?P<extractor>[^.\s]+)\.(?P<video_id>[^.\s]+)\.[^.\s]+$")
+
+# Per-extractor template to turn an id back into a watch URL.
+EXTRACTORS = {
+	"youtube": "https://www.youtube.com/watch?v={id}",
+}
+
+
+def url_for(filename: str) -> str:
+	basename = os.path.basename(filename)
+	m = SUFFIX_RE.search(basename)
+	if not m:
+		raise ValueError(f"unrecognized file name (no .<extractor>.<id>.<ext> suffix): {basename!r}")
+
+	url_template = EXTRACTORS.get(m["extractor"])
+	if url_template is None:
+		raise ValueError(f"unsupported extractor {m['extractor']!r} in {basename!r}")
+
+	return url_template.format(id=m["video_id"])
+
+
+def open_in_browser(url: str) -> None:
+	opener = next((o for o in ("open", "xdg-open") if shutil.which(o)), None)
+	if opener is None:
+		raise RuntimeError("no URL opener found (tried open, xdg-open)")
+	p = subprocess.run([opener, url], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+	if p.returncode != 0:
+		raise RuntimeError(f"{opener} failed for {url}: {p.stderr.strip()}")
+
+
+def parse_args(*, args: list[str], prog: str) -> dict[str, Any]:
+	parser = argparse.ArgumentParser(
+		prog=prog,
+		description=__doc__,
+		formatter_class=argparse.RawDescriptionHelpFormatter,
+	)
+	parser.add_argument("--print-only", "-p", action="store_true",
+		help="print the URL(s) without opening a browser")
+	parser.add_argument("filenames", metavar="FILE", nargs="+",
+		help="media file whose .<extractor>.<id>.<ext> suffix names the source video")
+	return vars(parser.parse_args(args))
+
+
+def main(*, filenames: list[str], print_only: bool) -> int:
+	status = 0
+	for filename in filenames:
+		try:
+			url = url_for(filename)
+			print(url)
+			if not print_only:
+				open_in_browser(url)
+		except (ValueError, RuntimeError) as e:
+			print(f"{os.path.basename(sys.argv[0])}: {e}", file=sys.stderr)
+			status = 1
+	return status
+
+
+if __name__ == "__main__":
+	try:
+		sys.exit(main(**parse_args(args=sys.argv[1:], prog=sys.argv[0])))
+	except KeyboardInterrupt:
+		print(file=sys.stderr)
+		sys.exit(127)
