@@ -1,0 +1,105 @@
+#!/bin/sh
+# Run yt-dlp-pasteboard.py in a detached tmux session, watching a queue
+# file for URLs and pushing ntfy notifications via
+# yt-dlp-pasteboard-ntfy-send.
+#
+# Usage:
+#   yt-dlp-pasteboard-tmux
+#     Ensure the session is running; when invoked from a terminal,
+#     attach to it (press q inside to stop the downloader).
+#
+#   yt-dlp-pasteboard-tmux queue [URL...]
+#     Ensure the session is running, then append the given URLs — or
+#     lines read from stdin when no URL arguments are given — to the
+#     queue file. This is the one command an iOS Shortcuts "Run Script
+#     over SSH" action needs, with the shortcut input passed as stdin.
+#
+# Configuration is read from
+# ${XDG_CONFIG_HOME:-~/.config}/yt-dlp-pasteboard-tmux/config (sh syntax):
+#
+#   YTDL_SESSION="ytdl"                       # tmux session name
+#   YTDL_DIR="$HOME/Downloads"                # cwd for the downloader,
+#                                             # where .yt-dlp.config lives
+#   YTDL_QUEUE="$HOME/.local/state/ytdl-queue.txt"
+#   YTDL_LOG="$HOME/.local/state/ytdl-session.log"
+#                                             # downloader stderr; check it
+#                                             # when the session dies at
+#                                             # startup
+#   YTDL_NOTIFY_COMMAND="..."                 # default: the
+#                                             # yt-dlp-pasteboard-ntfy-send
+#                                             # next to this script
+#   YTDL_EXTRA_ARGS="..."                     # extra yt-dlp-pasteboard
+#                                             # options, split on spaces
+#
+# The queue file is truncated when a fresh session starts: the watcher
+# re-reads the whole file on startup, so stale entries would be
+# re-downloaded. URLs queued while no session exists are therefore only
+# kept until the next start.
+set -eu
+
+# SSH-launched environments (iOS Shortcuts, cron) get a minimal PATH
+# that usually lacks tmux and uv; put the standard install dirs back.
+PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+script_dir=$(CDPATH="" cd -- "$(dirname -- "$0")" && pwd)
+
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/yt-dlp-pasteboard-tmux/config"
+[ ! -f "$conf" ] || . "$conf"
+
+: "${YTDL_SESSION:=ytdl}"
+: "${YTDL_DIR:=$HOME/Downloads}"
+: "${YTDL_QUEUE:=$HOME/.local/state/ytdl-queue.txt}"
+: "${YTDL_LOG:=$HOME/.local/state/ytdl-session.log}"
+: "${YTDL_NOTIFY_COMMAND:=$script_dir/yt-dlp-pasteboard-ntfy-send}"
+: "${YTDL_EXTRA_ARGS:=}"
+
+shquote() {
+	printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+ensure_session() {
+	tmux has-session -t "$YTDL_SESSION" 2>/dev/null && return 0
+	mkdir -p "$YTDL_DIR" "$(dirname "$YTDL_QUEUE")" "$(dirname "$YTDL_LOG")"
+	: > "$YTDL_QUEUE"
+	: > "$YTDL_LOG"
+	# The exported PATH is evaluated inside the session so the downloader
+	# finds uv even when an already-running tmux server has a minimal
+	# environment; stderr goes to the log for post-mortems.
+	tmux new-session -d -s "$YTDL_SESSION" -c "$YTDL_DIR" \
+		"export PATH=\$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:\$PATH; \
+			exec $(shquote "$script_dir/yt-dlp-pasteboard.py") \
+			--watch-file $(shquote "$YTDL_QUEUE") \
+			--notify-command $(shquote "$YTDL_NOTIFY_COMMAND") \
+			$YTDL_EXTRA_ARGS 2>> $(shquote "$YTDL_LOG")"
+	# The downloader can die instantly (tool not found, bad config); a
+	# detached new-session reports success anyway, so verify it survived
+	# instead of failing silently.
+	sleep 2
+	if ! tmux has-session -t "$YTDL_SESSION" 2>/dev/null; then
+		echo "error: downloader session died right after start; last lines of $YTDL_LOG:" >&2
+		tail -n 5 "$YTDL_LOG" >&2 || true
+		exit 1
+	fi
+}
+
+case "${1:-}" in
+	queue)
+		shift
+		ensure_session
+		if [ $# -gt 0 ]; then
+			printf '%s\n' "$@" >> "$YTDL_QUEUE"
+		else
+			cat >> "$YTDL_QUEUE"
+		fi
+		;;
+	"")
+		ensure_session
+		if [ -t 0 ] && [ -t 1 ] && [ -z "${TMUX:-}" ]; then
+			exec tmux attach-session -t "$YTDL_SESSION"
+		fi
+		;;
+	*)
+		echo "usage: $0 [queue [URL...]]" >&2
+		exit 2
+		;;
+esac

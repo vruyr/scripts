@@ -46,6 +46,10 @@ def fake_ytdlp():
 		print(f"ERROR: transient failure on attempt {attempt}", file=sys.stderr, flush=True)
 		sys.exit(1)
 
+	if "already-have" in url:
+		print(f"[download] Video {digest} has already been downloaded", flush=True)
+		return
+
 	total = 1_000_000
 	total_field = "NA" if "no-total" in url else total
 	stream_files = [f"Video {digest}.f616.mp4"]
@@ -155,9 +159,10 @@ URLS = [
 	"https://example.com/always-fail",
 	"https://example.com/no-total",
 	"https://example.com/two-streams",
+	"https://example.com/already-have",
 	"https://example.com/ok",  # duplicate, must be ignored
 ]
-EXPECTED_ROWS = 5
+EXPECTED_ROWS = 6
 
 
 async def url_source(queue):
@@ -170,10 +175,16 @@ async def run_app_test():
 	queue = asyncio.Queue()
 	for url in URLS:
 		queue.put_nowait(url)
+	notify_log = os.path.join(tempfile.mkdtemp(), "notify.log")
 	app = mod.PasteboardDownloadApp(
 		url_source=url_source(queue),
 		command=(sys.executable, TESTS_PATH, "--fake-ytdlp"),
 		extra_args=(),
+		notify_command=(
+			'printf \'%s\\t%s\\t%s\\t%s\\t%s\\n\' "$NOTIFY_EVENT" "$NOTIFY_URL"'
+			' "$NOTIFY_TITLE" "$NOTIFY_ERROR" "$NOTIFY_ATTEMPT"'
+			f' >> {notify_log}'
+		),
 	)
 	terminal = {mod.DownloadState.DONE, mod.DownloadState.FAILED}
 	info = {"seen_stream_files": set(), "status_samples": []}
@@ -212,7 +223,31 @@ async def run_app_test():
 			if len(app.rows) == EXPECTED_ROWS + 1:
 				break
 		info["late_number"] = app.rows[-1].number
+		# Notify commands run as fire-and-forget workers; wait for all
+		# expected events (2 per clean download, +1 per extra attempt).
+		for _ in range(100):
+			await pilot.pause(0.05)
+			if len(read_notify_log(notify_log)) >= 17 and all(
+				row.state in terminal for row in app.rows
+			):
+				break
+		# Re-queue an already-finished URL: no new row, but an
+		# already-downloaded notification for the phone.
+		queue.put_nowait("https://example.com/ok")
+		for _ in range(100):
+			await pilot.pause(0.05)
+			if len(read_notify_log(notify_log)) >= 18:
+				break
+		info["rows_after_done_duplicate"] = len(app.rows)
+	info["notify_events"] = read_notify_log(notify_log)
 	return app, info
+
+
+def read_notify_log(path):
+	if not os.path.exists(path):
+		return []
+	lines = open(path, encoding="utf-8").read().splitlines()
+	return [tuple(line.split("\t")) for line in lines]
 
 
 app, info = asyncio.run(run_app_test())
@@ -233,6 +268,9 @@ check(rows["always-fail"].attempt == mod.RETRY_COUNT, "app: always-fail used all
 check("transient failure" in (rows["always-fail"].error or ""), f"app: error captured from stderr (got {rows['always-fail'].error!r})")
 check(rows["no-total"].state is S.DONE, "app: unknown-total download -> DONE")
 check(rows["two-streams"].state is S.DONE, "app: two-streams -> DONE")
+check(rows["already-have"].state is S.DONE, "app: already-have -> DONE")
+check(rows["already-have"].already_downloaded, "app: already_downloaded flag set")
+check(not rows["already-have"].filepaths, "app: already-have wrote no files")
 check(len(seen_stream_files) == 2, f"streams: separate bar per file (saw {seen_stream_files})")
 check(any(".f616." in name for name in seen_stream_files), "streams: video format code in bar label")
 check(any(".f251." in name for name in seen_stream_files), "streams: audio format code in bar label")
@@ -243,7 +281,7 @@ check(
 	and all(mod.cell_len(text) == width and not text.endswith(" ") for text, width in info["status_samples"]),
 	f"layout: stats flush right ({len(info['status_samples'])} samples)",
 )
-check(info["numbers_before_clear"] == [1, 2, 3, 4, 5], f"numbers: sequential (got {info['numbers_before_clear']})")
+check(info["numbers_before_clear"] == [1, 2, 3, 4, 5, 6], f"numbers: sequential (got {info['numbers_before_clear']})")
 check(info["failed_number_after_clear"] == 1, f"numbers: reset after clear (got {info['failed_number_after_clear']})")
 check(info["late_number"] == 2, f"numbers: continue after reset (got {info['late_number']})")
 check("Video " in info["done_title"] and "https://example.com/ok" in info["done_title"], f"done view: original URL after title (got {info['done_title']!r})")
@@ -251,9 +289,48 @@ check(
 	"Video " in info.get("downloading_title", "") and "https://example.com/two-streams" in info.get("downloading_title", ""),
 	f"downloading view: URL stays after title (got {info.get('downloading_title')!r})",
 )
-check(all(not on_screen[id(row)] for row in app.rows if row.state is S.DONE), "clear: DONE rows removed from screen")
+# The late row finishes after the snapshot and is legitimately on screen.
+check(
+	all(not on_screen[id(row)] for row in app.rows if id(row) in on_screen and row.state is S.DONE),
+	"clear: DONE rows removed from screen",
+)
 check(on_screen[id(rows["always-fail"])], "clear: FAILED row still on screen")
 check(len(app.rows) == EXPECTED_ROWS + 1, "clear: cleared rows kept for exit summary")
+
+
+# --- notify command events ---
+
+def events_for(url_suffix):
+	url = f"https://example.com/{url_suffix}"
+	return [event for event in info["notify_events"] if event[1] == url]
+
+ok_events = events_for("ok")
+check(
+	[event[0] for event in ok_events] == ["started", "finished", "already-downloaded"],
+	f"notify: ok -> started, finished, then already-downloaded for the re-queue (got {[e[0] for e in ok_events]})",
+)
+check(ok_events[2][2].startswith("Video "), f"notify: done-duplicate carries title (got {ok_events[2][2]!r})")
+check(info["rows_after_done_duplicate"] == EXPECTED_ROWS + 1, "notify: done-duplicate adds no row")
+already_events = events_for("already-have")
+check(
+	[event[0] for event in already_events] == ["started", "already-downloaded"],
+	f"notify: already-have -> started, already-downloaded (got {[e[0] for e in already_events]})",
+)
+check(len(events_for("late")) and ok_events[0][2] == "", "notify: started has no title yet")
+check(ok_events[1][2].startswith("Video "), f"notify: finished carries title (got {ok_events[1][2]!r})")
+fail_once_events = events_for("fail-once")
+check(
+	[event[0] for event in fail_once_events] == ["started", "retrying", "finished"],
+	f"notify: fail-once -> started, retrying, finished (got {[e[0] for e in fail_once_events]})",
+)
+check(fail_once_events[1][4] == "2", f"notify: retrying carries attempt number (got {fail_once_events[1][4]!r})")
+always_fail_events = events_for("always-fail")
+check(
+	[event[0] for event in always_fail_events] == ["started"] + ["retrying"] * (mod.RETRY_COUNT - 1) + ["failed"],
+	f"notify: always-fail -> started, retrying…, failed (got {[e[0] for e in always_fail_events]})",
+)
+check("transient failure" in always_fail_events[-1][3], f"notify: failed carries error (got {always_fail_events[-1][3]!r})")
+check(len(info["notify_events"]) == 18, f"notify: no events for still-active duplicate URL (got {len(info['notify_events'])})")
 
 print()
 if failures:

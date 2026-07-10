@@ -24,8 +24,16 @@ for ".yt-dlp.config" files; every one found is passed to yt-dlp with
 --config-locations, outermost first, so the config closest to the current
 directory wins. Just cd into a folder to download the way it expects.
 
+With --notify-command, a shell command is run on download lifecycle
+events (started, retrying, finished, failed, already-downloaded) with
+the details passed in NOTIFY_* environment variables — handy for
+pushing phone notifications via e.g. ntfy.
+
 Everything after "--" is forwarded to yt-dlp verbatim.
 """
+
+# Tests live in yt-dlp-pasteboard.tests.py next to this file; run it
+# directly (no arguments) and keep it updated when changing this file.
 
 import sys, os, locale, argparse, asyncio, dataclasses, datetime, enum, json, shlex, urllib.parse
 from collections import deque
@@ -64,6 +72,7 @@ async def main(
 	watch_file,
 	log_urls,
 	config_filename,
+	notify_command,
 	ytdlp_args,
 ):
 	locale.setlocale(locale.LC_ALL, "")
@@ -88,6 +97,7 @@ async def main(
 		config_args=config_args,
 		config_locations=config_locations,
 		extra_args=tuple(ytdlp_args),
+		notify_command=notify_command,
 	)
 	await app.run_async()
 
@@ -97,7 +107,8 @@ async def main(
 			for path in row.filepaths:
 				print(f"✔ {path}")
 			if not row.filepaths:
-				print(f"✔ {row.title or row.url}")
+				note = " — already downloaded" if row.already_downloaded else ""
+				print(f"✔ {row.title or row.url}{note}")
 		elif row.state is DownloadState.FAILED:
 			failures += 1
 			print(f"✘ {row.title or row.url} — {row.error}")
@@ -213,6 +224,10 @@ class FileWritten:
 	filepath: str
 
 @dataclasses.dataclass
+class AlreadyDownloaded:
+	pass
+
+@dataclasses.dataclass
 class Finished:
 	pass
 
@@ -279,6 +294,11 @@ async def parse_ytdlp_stdout(stream):
 				yield FileWritten(json.loads(rest))
 			except json.JSONDecodeError:
 				pass
+		elif (
+			"has already been downloaded" in line
+			or "has already been recorded in the archive" in line
+		):
+			yield AlreadyDownloaded()
 
 
 def parse_progress_line(rest):
@@ -461,6 +481,7 @@ class DownloadRow(Widget):
 		self.state = DownloadState.QUEUED
 		self.error = None
 		self.attempt = 0
+		self.already_downloaded = False
 		self._file_lines = {}  # progress filename -> FileProgressLine
 
 	def compose(self):
@@ -475,10 +496,14 @@ class DownloadRow(Widget):
 
 	async def set_attempt(self, number):
 		self.attempt = number
+		self.already_downloaded = False
 		if self.state is not DownloadState.QUEUED:
 			self.state = DownloadState.QUEUED
 			await self._clear_file_lines()
 		self.refresh_row()
+
+	def set_already_downloaded(self):
+		self.already_downloaded = True
 
 	def set_title(self, title):
 		self.title = title
@@ -571,7 +596,9 @@ class DownloadRow(Widget):
 			case DownloadState.PROCESSING:
 				status = "post-processing…"
 			case DownloadState.DONE:
-				status = ", ".join(os.path.basename(p) for p in self.filepaths) or "done"
+				status = ", ".join(os.path.basename(p) for p in self.filepaths) or (
+					"already downloaded" if self.already_downloaded else "done"
+				)
 			case DownloadState.FAILED:
 				status = self.error or "failed"
 			case DownloadState.INTERRUPTED:
@@ -595,13 +622,14 @@ class PasteboardDownloadApp(App):
 	}
 	"""
 
-	def __init__(self, *, url_source, command, config_args, config_locations, extra_args):
+	def __init__(self, *, url_source, command, config_args=(), config_locations=(), extra_args=(), notify_command=None):
 		super().__init__()
 		self._url_source = url_source
 		self._command = command
 		self._config_args = config_args
 		self._config_locations = config_locations
 		self._extra_args = extra_args
+		self._notify_command = notify_command
 		self._next_number = 1
 		self.rows = []
 		self.sub_title = shlex.join([*command, *config_args, *extra_args])
@@ -623,6 +651,10 @@ class PasteboardDownloadApp(App):
 		async for url in self._url_source:
 			if self._is_active_or_done(url):
 				self.notify(f"Already handled: {url}", severity="warning")
+				for row in self.rows:
+					if row.url == url and row.state is DownloadState.DONE:
+						self._notify_event("already-downloaded", row)
+						break
 				continue
 			row = DownloadRow(url, number=self._next_number)
 			self._next_number += 1
@@ -663,6 +695,7 @@ class PasteboardDownloadApp(App):
 				match event:
 					case AttemptStarted(number=number):
 						await row.set_attempt(number)
+						self._notify_event("started" if number == 1 else "retrying", row)
 					case TitleKnown(title=title):
 						row.set_title(title)
 					case Progress():
@@ -671,17 +704,53 @@ class PasteboardDownloadApp(App):
 						row.set_post_processing()
 					case FileWritten(filepath=filepath):
 						row.add_filepath(filepath)
+					case AlreadyDownloaded():
+						row.set_already_downloaded()
 					case Finished():
 						await row.set_done()
+						if row.already_downloaded and not row.filepaths:
+							self._notify_event("already-downloaded", row)
+						else:
+							self._notify_event("finished", row)
 					case Failed(message=message):
 						row.set_failed(message)
+						self._notify_event("failed", row)
 		except asyncio.CancelledError:
 			row.set_interrupted()
 			raise
 		except Exception as exc:
 			row.set_failed(f"internal error: {exc!r}")
+			self._notify_event("failed", row)
 		finally:
 			await events.aclose()
+
+	def _notify_event(self, event, row):
+		if not self._notify_command:
+			return
+		env = dict(
+			os.environ,
+			NOTIFY_EVENT=event,
+			NOTIFY_URL=row.url,
+			NOTIFY_TITLE=row.title or "",
+			NOTIFY_ERROR=row.error or "",
+			NOTIFY_ATTEMPT=str(row.attempt),
+			NOTIFY_FILEPATHS="\n".join(row.filepaths),
+		)
+		self.run_worker(self._run_notify_command(event, env), group="notify")
+
+	async def _run_notify_command(self, event, env):
+		proc = await asyncio.create_subprocess_shell(
+			self._notify_command,
+			stdin=asyncio.subprocess.DEVNULL,
+			stdout=asyncio.subprocess.DEVNULL,
+			stderr=asyncio.subprocess.PIPE,
+			env=env,
+		)
+		_, stderr = await proc.communicate()
+		if proc.returncode != 0:
+			lines = stderr.decode("utf-8", errors="replace").strip().splitlines()
+			detail = lines[-1] if lines else f"exit code {proc.returncode}"
+			self.notify(f"notify command failed ({event}): {detail}", severity="warning")
 
 
 class FieldWidths:
@@ -793,6 +862,11 @@ def parse_args(*, args, prog):
 		"--log-urls", metavar="PATH",
 		action="store", dest="log_urls", default=None,
 		help="append every accepted URL to PATH as \"<timestamp>\\t<url>\" lines\n(for audit purposes; duplicates are logged too)",
+	)
+	options_main.add_argument(
+		"--notify-command", metavar="COMMAND",
+		action="store", dest="notify_command", default=None,
+		help="shell command run on download events (started, retrying, finished,\nfailed, already-downloaded); details are passed via environment\nvariables: NOTIFY_EVENT, NOTIFY_URL, NOTIFY_TITLE, NOTIFY_ERROR,\nNOTIFY_ATTEMPT, and NOTIFY_FILEPATHS (newline-separated)",
 	)
 	options_main.add_argument(
 		"--config-filename", metavar="NAME",

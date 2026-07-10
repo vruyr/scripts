@@ -1,0 +1,89 @@
+#!/bin/sh
+# Send a notification to an ntfy server (https://docs.ntfy.sh).
+#
+# Usage:
+#   yt-dlp-pasteboard-ntfy-send [-t TITLE] [-p PRIORITY] [-g TAGS] [-T TOPIC] [MESSAGE...]
+#     Send MESSAGE; with no MESSAGE arguments, the message is read from
+#     stdin (handy for an iOS Shortcuts "Run Script over SSH" action with
+#     the shortcut input passed as stdin).
+#
+#   yt-dlp-pasteboard.py --notify-command yt-dlp-pasteboard-ntfy-send
+#     With no arguments and NOTIFY_EVENT set in the environment, the
+#     notification is composed from the NOTIFY_* variables. Only events
+#     listed in YT_DLP_PASTEBOARD_EVENTS (default: "started finished
+#     failed already-downloaded") are sent; others exit 0 silently.
+#
+# Configuration is read from
+# ${XDG_CONFIG_HOME:-~/.config}/yt-dlp-pasteboard-ntfy-send/config
+# (sh syntax, values there win over inherited environment variables):
+#
+#   NTFY_SERVER="http://127.0.0.1:8080"           # required
+#   NTFY_TOPIC="ytdl"                             # required
+#   NTFY_TOKEN="tk_..."                           # optional; chmod 600
+#   YT_DLP_PASTEBOARD_EVENTS="started finished failed already-downloaded"
+#                                                 # optional
+#
+# All values are sent URL-encoded via ntfy's GET publish endpoint, so
+# titles with spaces, quotes, or non-ASCII characters are safe as-is.
+set -eu
+
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/yt-dlp-pasteboard-ntfy-send/config"
+[ ! -f "$conf" ] || . "$conf"
+
+title="" priority="" tags="" click=""
+while getopts "t:p:g:T:" opt; do
+	case "$opt" in
+		t) title=$OPTARG ;;
+		p) priority=$OPTARG ;;
+		g) tags=$OPTARG ;;
+		T) NTFY_TOPIC=$OPTARG ;;
+		*) exit 2 ;;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ $# -gt 0 ]; then
+	message=$*
+elif [ -z "${NOTIFY_EVENT:-}" ]; then
+	message=$(cat)
+else
+	# yt-dlp-pasteboard --notify-command mode
+	events=${YT_DLP_PASTEBOARD_EVENTS:-"started finished failed already-downloaded"}
+	case " $events " in
+		*" $NOTIFY_EVENT "*) ;;
+		*) exit 0 ;;
+	esac
+	click=$NOTIFY_URL
+	# Every notification body ends with the URL; the video title is
+	# prepended once yt-dlp has reported it.
+	message=$NOTIFY_URL
+	[ -z "${NOTIFY_TITLE:-}" ] || message="$NOTIFY_TITLE
+$NOTIFY_URL"
+	case "$NOTIFY_EVENT" in
+		started)  title="Download started"; tags="arrow_down"; priority="low" ;;
+		retrying) title="Retrying (attempt $NOTIFY_ATTEMPT)"; tags="repeat"; priority="low" ;;
+		finished) title="Downloaded"; tags="white_check_mark" ;;
+		already-downloaded) title="Already downloaded"; tags="heavy_check_mark"; priority="low" ;;
+		failed)   title="Download failed"; tags="x"; priority="high"; message="$message
+$NOTIFY_ERROR" ;;
+		*)        title=$NOTIFY_EVENT ;;
+	esac
+fi
+
+: "${NTFY_SERVER:?set NTFY_SERVER in $conf or the environment}"
+: "${NTFY_TOPIC:?set NTFY_TOPIC in $conf or the environment}"
+
+set -- -fsS -o /dev/null -G "$NTFY_SERVER/$NTFY_TOPIC/publish" \
+	--data-urlencode "message=$message"
+[ -z "$title" ]    || set -- "$@" --data-urlencode "title=$title"
+[ -z "$tags" ]     || set -- "$@" --data-urlencode "tags=$tags"
+[ -z "$priority" ] || set -- "$@" --data-urlencode "priority=$priority"
+[ -z "$click" ]    || set -- "$@" --data-urlencode "click=$click"
+
+if [ -n "${NTFY_TOKEN:-}" ]; then
+	# Feed the token to curl as a config file on stdin so it never
+	# appears in the process list.
+	printf 'header = "Authorization: Bearer %s"\n' "$NTFY_TOKEN" | curl -K - "$@"
+else
+	curl "$@"
+fi
