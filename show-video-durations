@@ -293,8 +293,9 @@ DEFAULT_IGNORED_FILES = [
 	r"(\._)?(favorite|folder)(-atv)?\.(jpg|png)",
 	r"Icon\r",
 	r"\.firefoxprofile",
-    r".*\.json",
-    r".*\.txt",
+	r".*\.json",
+	r".*\.txt",
+	r".*\.config",
 ]
 
 
