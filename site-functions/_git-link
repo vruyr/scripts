@@ -1,0 +1,74 @@
+#compdef git-link
+#
+# Completion for git-link. Also picked up by zsh's _git for `git link`,
+# which dispatches unknown subcommands to a _git-<subcommand> function.
+
+__git-link_remotes() {
+	local -a remotes
+	remotes=(${(f)"$(_call_program remotes git remote 2>/dev/null)"})
+	_describe -t remotes 'remote' remotes
+}
+
+__git-link_commits() {
+	# Prefer the helpers from the real git completion when they are loaded.
+	if (( $+functions[__git_commits] )); then
+		__git_commits
+		return
+	fi
+	local -a refs
+	refs=(HEAD ${(f)"$(_call_program refs \
+		git for-each-ref --format='%\(refname:short\)' \
+		refs/heads refs/tags refs/remotes 2>/dev/null)"})
+	_describe -t commits 'commit-ish' refs
+}
+
+# The <commit-ish> already on the command line (default HEAD), so that paths
+# complete from that commit's tree instead of the filesystem.
+__git-link_commit_on_line() {
+	local -a pos
+	local i=2 w
+	while (( i <= $#words )); do
+		w=$words[i]
+		case $w in
+			(-r|--remote|-L|--lines) (( i += 2 )); continue ;;
+			(--) pos+=("${(@)words[i+1,-1]}"); break ;;
+			(-*) (( i += 1 )); continue ;;
+			(*) pos+=("$w") ;;
+		esac
+		(( i += 1 ))
+	done
+	# Drop the word being completed.
+	(( CURRENT <= $#words )) && [[ ${pos[-1]:-} == ${words[CURRENT]:-} ]] && pos[-1]=()
+	print -r -- "${pos[1]:-HEAD}"
+}
+
+__git-link_paths() {
+	local commit
+	commit=$(__git-link_commit_on_line)
+	local -a files
+	files=(${(0)"$(_call_program tree-files \
+		git ls-tree -r -z --name-only ${(q)commit} 2>/dev/null)"})
+	(( ${#files} )) || return 1
+	_multi_parts -f / files
+}
+
+_git-link() {
+	if ! _call_program git-dir git rev-parse --git-dir > /dev/null 2>&1; then
+		_message -r 'git-link: not inside a git repository'
+		return 1
+	fi
+	_arguments -S \
+		'(-r --remote)'{-r,--remote}'[remote to link against]:remote:__git-link_remotes' \
+		'--resolved[use the insteadOf-resolved URL instead of the literal config value]' \
+		'--short=-[abbreviate the commit sha]::length:' \
+		'*'{-L,--lines}'[line or line range, e.g. 12 or 12-40]:range:' \
+		'--bytes[emit ranges as blob byte offsets]' \
+		'--fetch[git fetch the remote before the reachability check]' \
+		'(-c --copy)'{-c,--copy}'[copy the link to the clipboard via OSC 52]' \
+		'--pick[select the range interactively (not implemented yet)]' \
+		'(-h --help)'{-h,--help}'[show help]' \
+		'1:commit-ish:__git-link_commits' \
+		'2:path in commit:__git-link_paths'
+}
+
+_git-link "$@"

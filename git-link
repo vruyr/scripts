@@ -1,0 +1,294 @@
+#!/bin/zsh
+#
+# Produce a stable, shareable link to a commit — optionally to a file (or a
+# line/byte range within it) at that commit — using a remote URL configured
+# in the repository. Refuses to link commits that are not reachable from the
+# chosen remote's tracking refs, to avoid handing out broken links.
+#
+# Output formats:
+#   github.com remotes:  https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<s>-L<e>
+#   everything else:     <remote-url>@<sha>[:<path>[#<ranges>]]
+#                        where each range is L<s>[-L<e>] or, with --bytes,
+#                        B<start>-B<end> (0-based blob byte offsets, end
+#                        exclusive, trailing newline of the last line included
+#                        when present).
+
+set -euo pipefail
+
+prog=${0:t}
+
+usage() {
+	cat <<-EOF
+	usage: $prog [options] [<commit-ish>] [--] [<path>]
+
+	    <commit-ish>          anything git rev-parse accepts (default: HEAD);
+	                          a remote-tracking name such as origin/main or
+	                          main@{u} also selects that remote
+	    <path>                a path inside that commit; relative paths are
+	                          resolved against the current directory
+
+	options:
+	    -r, --remote <name>   remote to link against (required when the repo
+	                          has more than one and the session is
+	                          non-interactive)
+	    --resolved            use the insteadOf-resolved URL instead of the
+	                          literal remote.<name>.url config value
+	    --short[=<n>]         abbreviate the commit sha
+	    -L, --lines <range>   line or line range, e.g. 12, 12-40, or 12,40;
+	                          repeatable (requires <path>)
+	    --bytes               emit ranges as blob byte offsets instead of
+	                          lines (unsupported for GitHub URLs)
+	    --fetch               git fetch the remote before the reachability
+	                          check
+	    -c, --copy            also copy the link to the clipboard via OSC 52
+	    --pick                select the range interactively (not implemented
+	                          yet)
+	    -h, --help            show this help
+	EOF
+}
+
+die() {
+	print -ru2 -- "$prog: $*"
+	exit 1
+}
+
+# Collapse . and .. segments of a repo-relative path; fails if .. escapes the
+# repository root.
+normalize_path() {
+	local -a out
+	local seg
+	for seg in ${(s:/:)1}; do
+		case $seg in
+			(.|'') ;;
+			(..) (( ${#out} )) || return 1; out[-1]=() ;;
+			(*) out+=("$seg") ;;
+		esac
+	done
+	print -r -- ${(j:/:)out}
+}
+
+# Percent-encode everything but unreserved characters and the path separator,
+# byte-wise so multibyte characters encode correctly.
+urlencode_path() {
+	local LC_ALL=C
+	local ch out=""
+	for ch in ${(s::)1}; do
+		if [[ $ch == [A-Za-z0-9./_~-] ]]; then
+			out+=$ch
+		else
+			out+=$(printf '%%%02X' "'$ch")
+		fi
+	done
+	print -r -- "$out"
+}
+
+copy_to_clipboard() {
+	# OSC 52 — ask the terminal to set the clipboard; written to the
+	# controlling terminal so a piped stdout stays clean.
+	printf '\033]52;c;%s\007' "$(printf '%s' "$1" | base64 | tr -d '\n')" > /dev/tty 2>/dev/null \
+		|| printf '\033]52;c;%s\007' "$(printf '%s' "$1" | base64 | tr -d '\n')" >&2
+}
+
+remote="" resolved=0 short_opt="" bytes=0 fetch=0 copy=0
+typeset -a range_specs positionals path_args
+
+while (( $# )); do
+	case $1 in
+		(-r|--remote)
+			(( $# >= 2 )) || die "$1 requires a value"
+			remote=$2; shift 2 ;;
+		(--resolved) resolved=1; shift ;;
+		(--short) short_opt="--short"; shift ;;
+		(--short=*) short_opt="--short=${1#--short=}"; shift ;;
+		(-L|--lines)
+			(( $# >= 2 )) || die "$1 requires a value"
+			range_specs+=("$2"); shift 2 ;;
+		(-L*) range_specs+=("${1#-L}"); shift ;;
+		(--bytes) bytes=1; shift ;;
+		(--fetch) fetch=1; shift ;;
+		(-c|--copy) copy=1; shift ;;
+		(--pick) die "--pick is not implemented yet" ;;
+		(-h|--help) usage; exit 0 ;;
+		(--)
+			shift
+			path_args+=("$@")
+			set -- ;;
+		(-*) die "unknown option: $1 (see $prog --help)" ;;
+		(*) positionals+=("$1"); shift ;;
+	esac
+done
+
+(( ${#positionals} <= 2 )) || die "too many arguments: ${positionals[3,-1]}"
+(( ${#path_args} <= 1 )) || die "only one path may be given"
+
+commitish=${positionals[1]:-HEAD}
+filepath=""
+if (( ${#path_args} )); then
+	filepath=${path_args[1]}
+elif (( ${#positionals} >= 2 )); then
+	filepath=${positionals[2]}
+fi
+
+git rev-parse --git-dir > /dev/null 2>&1 || die "not inside a git repository"
+
+sha=$(git rev-parse --verify --quiet "${commitish}^{commit}") \
+	|| die "not a commit: $commitish"
+
+# Pick the remote: explicit -r, else inferred from a remote-tracking
+# commit-ish (e.g. origin/main or main@{u}), else the only one, else ask
+# (interactive) or bail (non-interactive).
+typeset -a remotes
+remotes=(${(f)"$(git remote)"})
+if [[ -z $remote ]]; then
+	fullref=$(git rev-parse --verify --quiet --symbolic-full-name "$commitish" 2>/dev/null) || fullref=""
+	if [[ $fullref == refs/remotes/* ]]; then
+		# Longest match, since remote names may themselves contain slashes.
+		for r in "${remotes[@]}"; do
+			if [[ $fullref == refs/remotes/$r/* && ${#r} -gt ${#remote} ]]; then
+				remote=$r
+			fi
+		done
+	fi
+fi
+if [[ -n $remote ]]; then
+	(( ${remotes[(Ie)$remote]} )) || die "no such remote: $remote"
+elif (( ${#remotes} == 0 )); then
+	die "no remotes configured"
+elif (( ${#remotes} == 1 )); then
+	remote=${remotes[1]}
+elif [[ -t 0 && -t 2 ]]; then
+	print -ru2 -- "Multiple remotes configured:"
+	PS3="Select remote: "
+	select remote in "${remotes[@]}"; do
+		[[ -n ${remote:-} ]] && break
+	done
+	[[ -n ${remote:-} ]] || die "no remote selected"
+else
+	die "multiple remotes (${(j:, :)remotes}); specify one with -r"
+fi
+
+if (( fetch )); then
+	git fetch --quiet -- "$remote" || die "git fetch $remote failed"
+fi
+
+# The commit must be reachable from some remote-tracking ref of the chosen
+# remote, otherwise the link would be broken for everyone else.
+if [[ -z $(git for-each-ref --count=1 --contains="$sha" --format='y' "refs/remotes/$remote") ]]; then
+	die "commit $sha is not reachable from any refs/remotes/$remote/* ref — push it first (or --fetch to refresh)"
+fi
+
+if (( resolved )); then
+	url=$(git remote get-url -- "$remote")
+else
+	url=$(git config --get "remote.$remote.url") \
+		|| die "remote.$remote.url is not set"
+fi
+
+# Resolve the path to its repo-root-relative form, honoring the cwd for
+# relative paths the way git pathspecs do.
+if [[ -n $filepath ]]; then
+	prefix=$(git rev-parse --show-prefix)
+	if [[ $filepath == ./* || $filepath == ../* ]]; then
+		filepath=$(normalize_path "$prefix$filepath") \
+			|| die "path escapes the repository root: $filepath"
+	elif ! git cat-file -e "$sha:$filepath" 2>/dev/null; then
+		cwd_relative=$(normalize_path "$prefix$filepath" 2>/dev/null) || cwd_relative=""
+		if [[ -n $cwd_relative ]] && git cat-file -e "$sha:$cwd_relative" 2>/dev/null; then
+			filepath=$cwd_relative
+		fi
+	fi
+fi
+
+obj_type=""
+if [[ -n $filepath ]]; then
+	obj_type=$(git cat-file -t "$sha:$filepath" 2>/dev/null) \
+		|| die "path not found in $commitish: $filepath"
+fi
+
+# Parse and validate -L ranges against the blob at <sha>:<path>.
+typeset -a starts ends
+if (( ${#range_specs} )); then
+	[[ -n $filepath ]] || die "-L requires a <path>"
+	[[ $obj_type == blob ]] || die "-L requires a file, but $filepath is a $obj_type"
+	nlines=$(git cat-file blob "$sha:$filepath" | awk 'END { print NR }')
+	for spec in "${range_specs[@]}"; do
+		[[ $spec =~ '^([0-9]+)([,-]([0-9]+))?$' ]] \
+			|| die "malformed range: $spec (expected N, N-M, or N,M)"
+		s=$match[1]
+		e=${match[3]:-$s}
+		(( s >= 1 && s <= e )) || die "invalid range: $spec"
+		(( e <= nlines )) || die "range $spec exceeds $filepath at $commitish ($nlines lines)"
+		starts+=($s)
+		ends+=($e)
+	done
+fi
+
+# Format the sha last so validation errors mention the full one.
+if [[ -n $short_opt ]]; then
+	sha_out=$(git rev-parse "$short_opt" --verify --quiet "$sha")
+else
+	sha_out=$sha
+fi
+
+(( bytes && ${#starts} == 0 )) && die "--bytes requires -L"
+
+# Build the fragment: L<s>[-L<e>] per range, or byte offsets with --bytes.
+typeset -a frag_parts
+if (( ${#starts} == 0 )); then
+	:
+elif (( bytes )); then
+	total=$(git cat-file -s "$sha:$filepath")
+	for i in {1..${#starts}}; do
+		s=$starts[i] e=$ends[i]
+		read -r boff blen <<< "$(git cat-file blob "$sha:$filepath" | awk -v s=$s -v e=$e '
+			NR < s { off += length($0) + 1 }
+			NR >= s && NR <= e { len += length($0) + 1 }
+			END { print off + 0, len + 0 }
+		')"
+		bend=$(( boff + blen ))
+		# A missing trailing newline on the last line was still counted above.
+		(( bend > total )) && bend=$total
+		frag_parts+=("B$boff-B$bend")
+	done
+else
+	for i in {1..${#starts}}; do
+		s=$starts[i] e=$ends[i]
+		if (( s == e )); then
+			frag_parts+=("L$s")
+		else
+			frag_parts+=("L$s-L$e")
+		fi
+	done
+fi
+frag=${(j:,:)frag_parts}
+
+# Recognize github.com remotes (no guessing beyond exact-host matches) and
+# emit a browsable URL for them; anything else gets the generic locator.
+owner_repo=""
+case $url in
+	(git@github.com:*) owner_repo=${url#git@github.com:} ;;
+	(ssh://git@github.com/*) owner_repo=${url#ssh://git@github.com/} ;;
+	(https://github.com/*) owner_repo=${url#https://github.com/} ;;
+	(http://github.com/*) owner_repo=${url#http://github.com/} ;;
+esac
+owner_repo=${${owner_repo%.git}#/}
+[[ $owner_repo == */* ]] || owner_repo=""
+
+if [[ -n $owner_repo ]]; then
+	(( bytes )) && die "--bytes is not supported for GitHub URLs"
+	(( ${#frag_parts} > 1 )) && die "GitHub URLs support at most one line range"
+	base="https://github.com/$owner_repo"
+	if [[ -z $filepath ]]; then
+		link="$base/commit/$sha_out"
+	elif [[ $obj_type == tree ]]; then
+		link="$base/tree/$sha_out/$(urlencode_path "$filepath")"
+	else
+		link="$base/blob/$sha_out/$(urlencode_path "$filepath")${frag:+#$frag}"
+	fi
+else
+	link="$url@$sha_out${filepath:+:$filepath}${frag:+#$frag}"
+fi
+
+print -r -- "$link"
+(( copy )) && copy_to_clipboard "$link"
+exit 0
