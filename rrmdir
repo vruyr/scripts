@@ -5,7 +5,27 @@
 function find() { "/usr/bin/find" "$@"; }
 function test() { builtin test "$@"; }
 
-test "${#@}" -eq 0 && {
+quiet=
+folders=()
+while test "$#" -gt 0; do
+	case "$1" in
+		-q|--quiet)
+			quiet=1
+			shift
+			;;
+		--)
+			shift
+			folders+=( "$@" )
+			break
+			;;
+		*)
+			folders+=( "$1" )
+			shift
+			;;
+	esac
+done
+
+test "${#folders[@]}" -eq 0 && {
 	echo "Need folders to delete as arguments."
 	exit 1
 }
@@ -18,7 +38,7 @@ if [ -z "$RRMDIR_QUIET" ]; then
 	find_print_operator=( -print )
 fi
 
-for d in "$@";
+for d in "${folders[@]}";
 do
 	test -d "$d" || {
 		echo "Error: '$d' is not a folder."
@@ -50,7 +70,9 @@ do
 	)
 
 	test "$(find "$d" -not -type d -not \( "${find_garbage_args[@]}" \) | wc -l)" -ne 0 && {
-		echo "Error: '$d' is not empty."
+		if [ -z "$quiet" ]; then
+			echo "Error: '$d' is not empty."
+		fi
 		continue
 	}
 
