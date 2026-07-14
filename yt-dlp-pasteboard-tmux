@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run yt-dlp-pasteboard.py in a detached tmux session, watching a queue
+# Run yt-dlp-pasteboard in a detached tmux session, watching a queue
 # file for URLs and pushing ntfy notifications via
 # yt-dlp-pasteboard-ntfy-send.
 #
@@ -67,7 +67,7 @@ ensure_session() {
 	# environment; stderr goes to the log for post-mortems.
 	tmux new-session -d -s "$YTDL_SESSION" -c "$YTDL_DIR" \
 		"export PATH=\$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:\$PATH; \
-			exec $(shquote "$script_dir/yt-dlp-pasteboard.py") \
+			exec $(shquote "$script_dir/yt-dlp-pasteboard") \
 			--watch-file $(shquote "$YTDL_QUEUE") \
 			--notify-command $(shquote "$YTDL_NOTIFY_COMMAND") \
 			$YTDL_EXTRA_ARGS 2>> $(shquote "$YTDL_LOG")"

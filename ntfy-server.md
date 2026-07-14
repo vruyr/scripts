@@ -1,11 +1,11 @@
 # ntfy Server on the Mac mini
 
-Self-hosted [ntfy](https://docs.ntfy.sh) push notification server, running as a Docker container under colima on the always-on Mac mini. It delivers download notifications from `yt-dlp-pasteboard.py` (sent by `yt-dlp-pasteboard-ntfy-send`) to the ntfy app on the iPhone.
+Self-hosted [ntfy](https://docs.ntfy.sh) push notification server, running as a Docker container under colima on the always-on Mac mini. It delivers download notifications from `yt-dlp-pasteboard` (sent by `yt-dlp-pasteboard-ntfy-send`) to the ntfy app on the iPhone.
 
 The full flow:
 
 1. iPhone Shortcut sends a video URL over SSH: `yt-dlp-pasteboard-tmux queue`.
-2. `yt-dlp-pasteboard.py`, running in a detached tmux session, downloads it.
+2. `yt-dlp-pasteboard`, running in a detached tmux session, downloads it.
 3. On each lifecycle event it runs `yt-dlp-pasteboard-ntfy-send`, which publishes to this server.
 4. The server pokes the phone through ntfy.sh's APNs bridge (content stays local).
 5. The ntfy app fetches the message from this server and shows the notification.

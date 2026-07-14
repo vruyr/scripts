@@ -7,7 +7,7 @@
 #     stdin (handy for an iOS Shortcuts "Run Script over SSH" action with
 #     the shortcut input passed as stdin).
 #
-#   yt-dlp-pasteboard.py --notify-command yt-dlp-pasteboard-ntfy-send
+#   yt-dlp-pasteboard --notify-command yt-dlp-pasteboard-ntfy-send
 #     With no arguments and NOTIFY_EVENT set in the environment, the
 #     notification is composed from the NOTIFY_* variables. Only events
 #     listed in YT_DLP_PASTEBOARD_EVENTS (default: "started finished

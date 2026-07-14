@@ -10,7 +10,7 @@
 # ///
 
 __doc__ = """
-Headless tests for yt-dlp-pasteboard.py; run this file directly.
+Headless tests for yt-dlp-pasteboard; run this file directly.
 
 Covers URL validation, argument parsing, the URL audit log, and the real
 TUI driven by Textual's test pilot against a fake yt-dlp — this same file
@@ -72,7 +72,7 @@ if "--fake-ytdlp" in sys.argv:
 import asyncio, importlib.util, tempfile
 
 TESTS_PATH = os.path.abspath(__file__)
-SCRIPT_PATH = os.path.join(os.path.dirname(TESTS_PATH), "yt-dlp-pasteboard.py")
+SCRIPT_PATH = os.path.join(os.path.dirname(TESTS_PATH), "yt-dlp-pasteboard")
 
 spec = importlib.util.spec_from_file_location("pbtui", SCRIPT_PATH)
 mod = importlib.util.module_from_spec(spec)
