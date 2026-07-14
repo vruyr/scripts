@@ -20,10 +20,13 @@ fi
 
 for d in "$@";
 do
-	d=$(cd "$d" && pwd)
-
 	test -d "$d" || {
 		echo "Error: '$d' is not a folder."
+		continue
+	}
+
+	d=$(cd "$d" && pwd) || {
+		echo "Error: '$d' is not accessible."
 		continue
 	}
 
@@ -32,7 +35,6 @@ do
 		continue
 	}
 
-	# clear the garbage
 	find_garbage_args=(
 		-type f
 		\(
@@ -46,11 +48,21 @@ do
 			\)
 		\)
 	)
+
+	test "$(find "$d" -not -type d -not \( "${find_garbage_args[@]}" \) | wc -l)" -ne 0 && {
+		echo "Error: '$d' is not empty."
+		continue
+	}
+
+	# clear the garbage
 	find "$d" "${find_garbage_args[@]}" -delete "${find_print_operator[@]}"
 
 	# recursive folder deletion
 	find "$d" -mindepth 1 -type d -empty -delete "${find_print_operator[@]}"
-	rmdir "$d"
+	rmdir "$d" || {
+		echo "Error: failed to delete '$d'."
+		continue
+	}
 	if [ -z "$RRMDIR_QUIET" ]; then
 		echo "$d"
 	fi
