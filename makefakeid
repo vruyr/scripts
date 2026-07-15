@@ -8,19 +8,25 @@
 # dependencies = [
 #   "faker >=40.23.0",
 #   "babel >=2.0",
+#   "dnspython >=2.7",
+#   "anyascii >=0.3",
 # ]
 # ///
 
 __doc__ = """
 Generate a fake identity (name + email) for captive portal logins.
-Picks a random Faker locale and free-tier email domain.
+Picks a random Faker locale and a random domain that resolves in DNS.
 """
 
 import argparse
+import asyncio
 import random
 import sys
 import unicodedata
+import anyascii
 import babel.core
+import dns.asyncresolver
+import dns.exception
 import faker
 import faker.config
 
@@ -29,8 +35,9 @@ def main(*, locale):
 	fake, locale = _make_faker(locale)
 	first = fake.first_name()
 	last = fake.last_name()
-	domain = fake.free_email_domain()
-	local_part = f"{first.lower()}.{last.lower()}".replace(" ", "").replace("'", "")
+	domain = _resolvable_domain(fake)
+	local_part = anyascii.anyascii(f"{first}.{last}").lower()
+	local_part = "".join(c for c in local_part if c.isalnum() or c == ".")
 	email = f"{local_part}@{domain}"
 	postcode = fake.postcode()
 	print(_locale_display_name(locale))
@@ -62,7 +69,10 @@ def parse_args(*, args, prog):
 
 def _make_faker(locale=None):
 	if locale is not None:
-		return faker.Faker(locale), locale
+		try:
+			return faker.Faker(locale), locale
+		except AttributeError:
+			sys.exit(f"error: unknown locale {locale!r}; see faker.config.AVAILABLE_LOCALES")
 	locs = list(faker.config.AVAILABLE_LOCALES)
 	while True:
 		loc = random.choice(locs)
@@ -71,6 +81,43 @@ def _make_faker(locale=None):
 		f = faker.Faker(loc)
 		if _is_latin(f):
 			return f, loc
+
+
+def _resolvable_domain(fake, attempts=50):
+	candidates = list(dict.fromkeys(fake.domain_name() for _ in range(attempts)))
+	domain = asyncio.run(_first_resolvable(candidates))
+	return domain if domain is not None else fake.free_email_domain()
+
+
+async def _first_resolvable(domains, timeout=1.0, concurrency=8):
+	sem = asyncio.Semaphore(concurrency)
+	async def probe(domain):
+		async with sem:
+			return await _probe_domain(domain, timeout)
+	tasks = [asyncio.create_task(probe(d)) for d in domains]
+	try:
+		for fut in asyncio.as_completed(tasks):
+			if (domain := await fut) is not None:
+				return domain
+	finally:
+		for task in tasks:
+			task.cancel()
+		await asyncio.gather(*tasks, return_exceptions=True)
+	return None
+
+
+async def _probe_domain(domain, timeout):
+	resolver = dns.asyncresolver.Resolver()
+	resolver.timeout = timeout
+	resolver.lifetime = timeout
+	async def query(rtype):
+		try:
+			await resolver.resolve(domain, rtype)
+			return True
+		except (dns.exception.DNSException, UnicodeError):
+			return False
+	results = await asyncio.gather(*(query(rt) for rt in ("A", "AAAA", "MX")))
+	return domain if any(results) else None
 
 
 def _is_latin(f):
