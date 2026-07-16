@@ -1,4 +1,6 @@
-#!/usr/bin/env -S uv --quiet run --no-project --script --
+#!/bin/sh
+"exec" "uv" "--quiet" "run" "--no-project" "--script" "--" "$0" "$@"
+# vim: ft=python ts=4 sw=4 noet:
 # https://peps.python.org/pep-0723/
 # https://github.com/astral-sh/uv
 # /// script
@@ -10,7 +12,7 @@
 # ]
 # ///
 
-"""
+__doc__ = """
 Usage:
 	{prog} PATH OLD_FILE OLD_HEX OLD_MODE NEW_FILE NEW_HEX NEW_MODE
 """

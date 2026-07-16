@@ -1,4 +1,8 @@
-#!/usr/bin/env uv --quiet run --no-project --script --isolated --refresh --
+#!/bin/sh
+"exec" "uv" "--quiet" "run" "--no-project" "--script" "--isolated" "--refresh" "--" "$0" "$@"
+# vim: ft=python ts=4 sw=4 noet:
+# https://peps.python.org/pep-0723/
+# https://github.com/astral-sh/uv
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
