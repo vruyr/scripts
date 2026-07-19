@@ -12,12 +12,19 @@ TRAPZERR() {
 	return 1
 }
 
-if ! [[ $# -eq 1 && -d "$1" ]]; then
-	echo "USAGE: $0:t REPO_PATH"
+if ! [[ $# -eq 1 && ( -d "$1" || -f "$1" ) ]]; then
+	echo "USAGE: $0:t REPO_PATH_OR_BUNDLE"
 	exit 1
 fi
 
-cd "$1"
+typeset -g bundle_path=""
+if [[ -f "$1" ]]; then
+	# A file is assumed to be a git bundle; don't cd so `git bundle verify`
+	# can check prerequisites against the caller's current repository.
+	bundle_path="$1"
+else
+	cd "$1"
+fi
 
 () {
 	typeset -g USE_COLORS=""
@@ -125,7 +132,21 @@ function the_bat() {
 }
 
 section "References"
-git ls-remote --symref .
+git ls-remote --symref "${bundle_path:-.}"
+
+if [[ -n "$bundle_path" ]]; then
+	section "Bundle"
+	# Run twice to keep stdout (refs, prerequisites, hash algorithm) and
+	# stderr (okay/error status) from interleaving under buffering. Blank
+	# lines separate each statement group.
+	bundle_info="$(git bundle verify "$bundle_path" 2>/dev/null)" || true
+	if [[ -n "$bundle_info" ]]; then
+		printf '%s\n\n' "$bundle_info" | awk 'NR > 1 && /^The bundle / { print "" } { print } /^The bundle .*refs?:$/ { print "" }'
+	fi
+	# The brace group avoids zsh MULTIOS teeing stdout into the pipe.
+	{ git bundle verify "$bundle_path" 1>/dev/null } 2>&1 | sed 's/^\(.*\) is okay$/okay: \1/' || true
+	exit 0
+fi
 
 section "Tree at HEAD"
 git ls-tree HEAD --format "%(objectmode) %(objecttype) %(objectsize:padded) %(path)"
