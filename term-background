@@ -1,0 +1,62 @@
+#!/usr/bin/env zsh
+#
+# term-background — print "light" or "dark".
+#
+# Detection order:
+#   1. OSC 11 terminal query (most accurate, but needs the tty).
+#   2. macOS system appearance (works without a tty, e.g. inside fzf
+#      previews, and tracks live light/dark mode switching).
+#   3. TERM_BACKGROUND environment variable (e.g. exported by a caller
+#      that queried OSC 11 while it still owned the tty).
+#   4. "light".
+
+setopt ERR_EXIT
+
+typeset -g background=""
+
+if [[ -t 0 ]]; then
+	typeset -g osc11_response=""
+	() {
+		local ttyfd
+		: {ttyfd}<>"$(tty)"
+		# The stty command will use stdin which is same as $ttyfd
+		local oldstty="$(stty -g)"
+		stty raw -echo min 0 time 1
+		print -u "$ttyfd" -n '\e]11;?\e\\'
+		read -r -u "$ttyfd" -t 0.1 osc11_response || true
+		stty "$oldstty"
+		: {ttyfd}>&-
+	}
+
+	# Parse OSC 11 response: ESC]11;rgb:RRRR/GGGG/BBBB ESC\ or BEL
+	if [[ "$osc11_response" =~ rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+) ]]; then
+		r=$((16#${match[1]:0:2}))
+		g=$((16#${match[2]:0:2}))
+		b=$((16#${match[3]:0:2}))
+
+		# Calculate relative luminance (simplified)
+		luminance=$(( (r * 299 + g * 587 + b * 114) / 1000 ))
+
+		if [[ $luminance -lt 128 ]]; then
+			background=dark
+		else
+			background=light
+		fi
+	fi
+fi
+
+# TODO: Querying the macOS system appearance is a hack. It reports the state
+# of the machine this script happens to run on, not of the terminal viewing
+# it, so e.g. over ssh it will behave completely unexpectedly (consult the
+# remote machine's appearance, or silently fall through on a non-mac remote).
+# Replace with a real terminal-side query if one becomes possible without
+# owning the tty.
+if [[ -z "$background" ]] && (( $+commands[defaults] )); then
+	if [[ "$(defaults read -g AppleInterfaceStyle 2>/dev/null)" == "Dark" ]]; then
+		background=dark
+	else
+		background=light
+	fi
+fi
+
+print -r -- "${background:-${TERM_BACKGROUND:-light}}"

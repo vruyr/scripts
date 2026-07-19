@@ -30,40 +30,17 @@ fi
 	typeset -g USE_COLORS=""
 
 	if [[ -n "${FZF_PREVIEW_COLUMNS}" ]]; then
-		# stty hangs inside fzf preview; OSC 11 query is not available.
+		# The tty belongs to fzf while a preview is running, so OSC 11 is not
+		# available; term-background falls back to the OS appearance (tracking
+		# live light/dark switches) or the TERM_BACKGROUND exported by the
+		# caller (see git-choose). Re-detected on every render on purpose.
+		USE_COLORS="$(term-background 2>/dev/null || true)"
 		return
 	fi
 
 	[[ -t 0 ]] || return
 
-	USE_COLORS=light
-
-	local osc11_response=""
-	() {
-		local ttyfd
-		: {ttyfd}<>"$(tty)"
-		# The stty command will use stdin which is same as $ttyfd
-		local oldstty="$(stty -g)"
-		stty raw -echo min 0 time 1
-		print -u "$ttyfd" -n '\e]11;?\e\\'
-		read -r -u "$ttyfd" -t 0.1 osc11_response || true
-		stty "$oldstty"
-		: {ttyfd}>&-
-	}
-
-	# Parse OSC 11 response: ESC]11;rgb:RRRR/GGGG/BBBB ESC\ or BEL
-	if [[ "$osc11_response" =~ rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+) ]]; then
-		local r=$((16#${match[1]:0:2}))
-		local g=$((16#${match[2]:0:2}))
-		local b=$((16#${match[3]:0:2}))
-
-		# Calculate relative luminance (simplified)
-		local luminance=$(( (r * 299 + g * 587 + b * 114) / 1000 ))
-
-		if [[ $luminance -lt 128 ]]; then
-			USE_COLORS=dark
-		fi
-	fi
+	USE_COLORS="$(term-background 2>/dev/null)" || true
 }
 
 TERM_WIDTH=${FZF_PREVIEW_COLUMNS:-${COLUMNS:-20}}
@@ -127,7 +104,7 @@ function the_bat() {
 		--style=numbers \
 		--decorations always \
 		--color=always \
-		--theme=auto \
+		--theme "${USE_COLORS:-ansi}" \
 		"$@"
 }
 
