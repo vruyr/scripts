@@ -61,7 +61,7 @@ function choose() {
 		rpp="${path_for_url_prefix[$up]}"
 		while IFS= read -r repo; do
 			[[ -n "$repo" ]] || continue
-			repo_entries+=("${up}${repo}"$'\t'"${rpp}/${repo}"$'\t'"${remote_for_url_prefix[$up]}")
+			repo_entries+=("${up}${repo}"$'\t'"${rpp%/}/${repo}"$'\t'"${remote_for_url_prefix[$up]}")
 		done < <(cd "$rpp" && { fd -g -td '*.git'; fd -tf --exclude '*.git' } | sort -u | sed -E 's|/$||')
 	done
 
