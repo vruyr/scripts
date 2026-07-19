@@ -73,7 +73,34 @@ function choose() {
 	fi
 
 	local -a fzf_extra=()
-	[[ "$subcommand" == remote ]] && fzf_extra=(--multi)
+	if [[ "$subcommand" == remote ]]; then
+		# Map existing remote URLs (with any trailing .git stripped, since git
+		# resolves the suffix either way) to the remote names using them.
+		typeset -A remote_names_for_url
+		local rc
+		for rc in ${(@0):-"$(git config get --all --regex --show-names --null '^remote\..*\.url$' 2>/dev/null)"}; do
+			local rkey="${rc%%$'\n'*}"
+			local rurl="${${rc#*$'\n'}%.git}"
+			local rname="${${rkey#remote.}%.url}"
+			[[ -n "$rurl" ]] || continue
+			remote_names_for_url[$rurl]+="${remote_names_for_url[$rurl]:+, }${rname}"
+		done
+		local -a query_terms=()
+		local i
+		for (( i = 1; i <= ${#repo_entries}; ++i )); do
+			local entry_url="${repo_entries[i]%%$'\t'*}"
+			local names="${remote_names_for_url[${entry_url%.git}]-}"
+			if [[ -n "$names" ]]; then
+				repo_entries[i]+=$'\t'$'\e[32m✓ '"$names"$'\e[0m'
+				query_terms+=("'${${entry_url##*/}%.git}'")
+			else
+				repo_entries[i]+=$'\t'
+			fi
+		done
+		fzf_extra=(--multi --ansi --with-nth=1,4)
+		query_terms=(${(u)query_terms})
+		[[ ${#query_terms} -gt 0 ]] && fzf_extra+=(--query "${(j: | :)query_terms}")
+	fi
 
 	local -a selected
 	selected=("${(@f)$(printf '%s\n' "${repo_entries[@]}" | \
@@ -101,8 +128,9 @@ function choose() {
 			existing_remotes=("${(@f)$(git remote)}")
 			local line
 			for line in "${selected[@]}"; do
-				local repo_url="${line%%$'\t'*}"
-				local remote_name="${line##*$'\t'}"
+				local -a fields=("${(@ps:\t:)line}")
+				local repo_url="${fields[1]}"
+				local remote_name="${fields[3]}"
 				local unique_name="$remote_name"
 				local n=0
 				while (( ${existing_remotes[(Ie)$unique_name]} )); do
