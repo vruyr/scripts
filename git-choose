@@ -107,8 +107,8 @@ function choose() {
 	export TERM_BACKGROUND="${TERM_BACKGROUND:-$(term-background 2>/dev/null || true)}"
 
 	local -a selected
-	selected=("${(@f)$(printf '%s\n' "${repo_entries[@]}" | \
-		fzf --reverse --height=-10 --delimiter=$'\t' --with-nth=1 --preview 'git-repo-info {2}' "${fzf_extra[@]}")}");
+	selected=(${(@f)"$(printf '%s\n' "${repo_entries[@]}" | \
+		fzf --reverse --height=-10 --delimiter=$'\t' --with-nth=1 --preview 'git-repo-info {2}' "${fzf_extra[@]}")"});
 
 	[[ ${#selected} -gt 0 ]] || return 1;
 
