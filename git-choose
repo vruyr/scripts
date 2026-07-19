@@ -98,6 +98,12 @@ function choose() {
 			fi
 		done
 		fzf_extra=(--multi --ansi --with-nth=1,4)
+		# The ✓ marker is displayed only on already-added entries, so requiring
+		# it in the query filters the list down to them; ctrl-a toggles that.
+		fzf_extra+=(
+			--header 'ctrl-a: toggle added-only filter'
+			--bind 'ctrl-a:transform-query:case {q} in *✓*) printf %s {q} | sed "s/ *✓ *//g";; *) printf "%s ✓" {q};; esac'
+		)
 		query_terms=(${(u)query_terms})
 		[[ ${#query_terms} -gt 0 ]] && fzf_extra+=(--query "${(j: | :)query_terms}")
 	fi
