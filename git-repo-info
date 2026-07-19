@@ -148,6 +148,12 @@ if [[ -n "$bundle_path" ]]; then
 	exit 0
 fi
 
+section "Config"
+config_path="$(git rev-parse --git-path config)"
+if [[ -f "$config_path" ]]; then
+	the_bat --language ini "$config_path"
+fi
+
 section "Tree at HEAD"
 git ls-tree HEAD --format "%(objectmode) %(objecttype) %(objectsize:padded) %(path)"
 
