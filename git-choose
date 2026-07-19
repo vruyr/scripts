@@ -108,7 +108,7 @@ function choose() {
 
 	local -a selected
 	selected=(${(@f)"$(printf '%s\n' "${repo_entries[@]}" | \
-		fzf --reverse --height=-10 --delimiter=$'\t' --with-nth=1 --preview 'git-repo-info {2}' "${fzf_extra[@]}")"});
+		fzf --reverse --height=-3 --delimiter=$'\t' --with-nth=1 --preview 'git-repo-info {2}' "${fzf_extra[@]}")"});
 
 	[[ ${#selected} -gt 0 ]] || return 1;
 
